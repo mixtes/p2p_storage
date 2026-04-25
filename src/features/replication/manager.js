@@ -234,6 +234,67 @@ export async function requestAgreements () {
 /* ── owner side: replicate files ─────────────────────────────────────── */
 
 /**
+ * Make sure we have at least `target` active agreements before replicating.
+ * Picks up to `target` random connected peers without an active agreement
+ * and requests one from each, then waits up to `waitMs` for acceptances.
+ */
+export async function ensureAgreements (target, waitMs = 5000) {
+  if (!config || target <= 0) return 0
+
+  const manifest = getOwnerManifest()
+  const activePeers = new Set()
+  for await (const node of manifest.createReadStream({ gte: 'agreement:', lt: 'agreement;' })) {
+    if (node.value.status === 'active') {
+      activePeers.add(node.key.replace('agreement:', ''))
+    }
+  }
+
+  const needed = target - activePeers.size
+  if (needed <= 0) return 0
+
+  const candidates = [...connectedPeers.entries()].filter(([peerId]) => !activePeers.has(peerId))
+  if (candidates.length === 0) {
+    activity.warn('no peers available for new agreements (need ' + needed + ' more)')
+    return 0
+  }
+
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
+  }
+  const picked = candidates.slice(0, needed)
+
+  const ownerKey = getPublicKeyHex()
+  const neededPerKeeper = Math.ceil(config.offeredBytes / Math.max(picked.length + activePeers.size, 1))
+  const pickedIds = new Set(picked.map(([peerId]) => peerId))
+
+  activity.info('auto-requesting agreements from ' + picked.length + ' random peer(s)')
+  for (const [peerId, rpc] of picked) {
+    requestAgreement(rpc, ownerKey, neededPerKeeper, config.replicationFactor)
+  }
+
+  await new Promise((resolve) => {
+    let accepted = 0
+    const onChange = (peerId, status) => {
+      if (pickedIds.has(peerId) && status === 'active') {
+        accepted++
+        if (accepted >= picked.length) done()
+      }
+    }
+    const done = () => {
+      const idx = listeners.agreementChanged.indexOf(onChange)
+      if (idx !== -1) listeners.agreementChanged.splice(idx, 1)
+      clearTimeout(timer)
+      resolve()
+    }
+    listeners.agreementChanged.push(onChange)
+    const timer = setTimeout(done, waitMs)
+  })
+
+  return picked.length
+}
+
+/**
  * Replicate a single file: chunk → encrypt → distribute to keepers.
  *
  * @param {string} filePath  - logical path for manifest tracking
@@ -241,6 +302,8 @@ export async function requestAgreements () {
  */
 export async function replicateFile (filePath, fileData) {
   if (!config) throw new Error('Replication not configured')
+
+  await ensureAgreements(config.replicationFactor)
 
   const ownerPk = getPublicKey()
   const manifest = getOwnerManifest()

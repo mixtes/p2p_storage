@@ -40,6 +40,10 @@ function resolveProjectDir () {
     const u = new URL(link)
     if (u.protocol === 'file:') {
       let p = decodeURIComponent(u.pathname)
+      // On Windows, file:// URL pathnames are like "/C:/Users/...". The leading
+      // slash makes Node's path resolver treat it as an absolute path on the
+      // current drive, producing "C:\C:\Users\...". Strip it.
+      if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
       if (p.endsWith('/')) p = p.slice(0, -1)
       return p
     }
