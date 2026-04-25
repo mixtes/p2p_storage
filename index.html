@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>P2P FileShare</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="titlebar">
+      <h1>P2P FileShare</h1>
+      <div class="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">idle</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>1. Join a topic</h2>
+        <p class="hint">
+          Both devices type the same topic string. Anyone on the same topic
+          connects automatically &mdash; no server in the middle.
+        </p>
+        <div class="row">
+          <input id="topic" placeholder="e.g. apple-river-92" />
+          <button id="joinBtn">Join</button>
+        </div>
+        <div class="kv">
+          <span>my drive key</span>
+          <code id="myKey">…</code>
+        </div>
+        <div class="kv">
+          <span>connected peers</span>
+          <ul id="peers" class="peers">
+            <li class="empty">none yet</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Send a folder</h2>
+        <p class="hint">
+          Local folder &rarr; your Hyperdrive. Peers on the topic will mirror it
+          into their receive folder.
+        </p>
+        <div class="row">
+          <input id="sendFolder" placeholder="/absolute/path/to/folder/to/share" />
+          <button id="sendBtn">Mirror &rarr; drive</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. Receive into a folder</h2>
+        <p class="hint">
+          Each peer&rsquo;s Hyperdrive &rarr; this local folder. Continues
+          syncing as new files arrive.
+        </p>
+        <div class="row">
+          <input id="recvFolder" placeholder="/absolute/path/to/downloads" />
+          <button id="recvBtn">Start receiving</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Activity</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "p2p-fileshare",
+  "version": "1.0.0",
+  "description": "Direct peer-to-peer file sharing built with Pear, Hyperdrive, Hyperswarm, Corestore, Localdrive and Mirror-drive.",
+  "main": "index.html",
+  "type": "module",
+  "pear": {
+    "name": "p2p-fileshare",
+    "type": "desktop",
+    "gui": {
+      "backgroundColor": "#1F2430",
+      "height": 680,
+      "width": 920
+    }
+  },
+  "scripts": {
+    "dev": "pear run -d .",
+    "start": "pear run ."
+  },
+  "dependencies": {
+    "b4a": "^1.8.0",
+    "corestore": "^7.9.2",
+    "hypercore-crypto": "^3.6.1",
+    "hyperdrive": "^13.3.2",
+    "hyperswarm": "^4.17.0",
+    "localdrive": "^2.2.1",
+    "mirror-drive": "^1.14.2",
+    "pear-electron": "^1.7.28"
+  }
+}
