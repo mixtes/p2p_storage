@@ -7,6 +7,10 @@
  *   3. Give Memory view      — offer your space, accept/decline requests
  */
 
+import Localdrive from 'localdrive'
+import { activity } from '../../core/logger.js'
+import { pickFolderNative } from '../../ui/folder-picker.js'
+
 const $ = (id) => document.getElementById(id)
 
 let _manager   = null
@@ -123,15 +127,17 @@ export function renderFriendList (friends, peers) {
   }
 
   for (const { keyHex, nick } of friends) {
-    const online  = onlineSet.has(keyHex)
+    const liveness = onlineSet.has(keyHex)
+      ? (typeof _manager.livenessFor === 'function' ? _manager.livenessFor(keyHex) : 'live')
+      : 'offline'
     const display = nick || (keyHex.slice(0, 8) + '…' + keyHex.slice(-4))
     const li = document.createElement('li')
     li.className = 'friend-card'
     li.innerHTML = `
-      <span class="fs-dot ${online ? 'on' : ''}"></span>
+      <span class="fs-dot fs-dot-${liveness}"></span>
       <span class="fs-nick">${_esc(display)}</span>
       <code class="fs-short-key">${keyHex.slice(0, 8)}…${keyHex.slice(-4)}</code>
-      <span class="fs-status-text">${online ? 'online' : 'offline'}</span>
+      <span class="fs-status-text">${liveness}</span>
       <button class="fs-remove-btn" data-remove-key="${keyHex}">Remove</button>
     `
     ul.appendChild(li)
@@ -156,13 +162,41 @@ function _bindRequestMemory () {
 
   $('fs-req-peer').addEventListener('change', _updateSendBtn)
 
+  // Retrieve-button delegation on the active requests list.
+  $('fs-req-list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-retrieve-key]')
+    if (!btn) return
+    const keyHex = btn.dataset.retrieveKey
+    const fileName = btn.dataset.retrieveFile
+    btn.disabled = true
+    btn.textContent = 'Picking folder…'
+    try {
+      const folder = await pickFolderNative()
+      if (!folder) { btn.disabled = false; btn.textContent = 'Retrieve'; return }
+      btn.textContent = 'Retrieving…'
+      const buf = await _manager.fetchStorage(keyHex, fileName)
+      const drive = new Localdrive(folder)
+      await drive.put('/' + fileName, buf)
+      activity.info('friend-storage: saved "' + fileName + '" -> ' + folder)
+    } catch (err) {
+      activity.error('friend-storage: retrieve failed: ' + err.message)
+    } finally {
+      btn.disabled = false
+      btn.textContent = 'Retrieve'
+    }
+  })
+
   sendBtn.addEventListener('click', async () => {
     const keyHex = $('fs-req-peer').value
     const limitMB = Number($('fs-req-size-limit').value) || 0
     if (!keyHex || !_selectedFile) return
     sendBtn.disabled = true
     sendBtn.textContent = 'Requesting…'
-    await _manager.requestStorage(keyHex, _selectedFile, limitMB * 1024 * 1024)
+    try {
+      await _manager.requestStorage(keyHex, _selectedFile, limitMB * 1024 * 1024)
+    } catch (err) {
+      activity.error('friend-storage: request failed: ' + err.message)
+    }
     sendBtn.textContent = 'Request Storage'
     _selectedFile = null
     fileInput.value = ''
@@ -194,10 +228,14 @@ export function renderActiveRequests (outgoing, friends) {
       const display = nickMap[keyHex] || (keyHex.slice(0, 8) + '…')
       const li = document.createElement('li')
       li.className = 'fs-ledger-row'
+      const retrieveBtn = f.status === 'hosted'
+        ? `<button class="fs-retrieve-btn" data-retrieve-key="${keyHex}" data-retrieve-file="${_esc(f.fileName)}">Retrieve</button>`
+        : ''
       li.innerHTML = `
         <span class="fs-file-name">${_esc(f.fileName)}</span>
         <span class="fs-ledger-peer">${_esc(display)}</span>
         <span class="badge badge-${f.status}">${f.status}</span>
+        ${retrieveBtn}
       `
       ul.appendChild(li)
     }

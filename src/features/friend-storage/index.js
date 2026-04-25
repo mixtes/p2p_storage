@@ -15,6 +15,10 @@ export function init (networkRef) {
 
   ui.init(manager, networkRef.getPeers)
 
+  // Cover peers that connected before this module finished init().
+  const existing = networkRef.getPeers()
+  for (const [hex, peer] of existing) setupChannel(peer, hex, manager)
+
   networkRef.on('peerAdd', (peer, hex) => {
     setupChannel(peer, hex, manager)
     ui.onPeerChange(networkRef.getPeers())
@@ -27,6 +31,10 @@ export function init (networkRef) {
   )
 
   manager.on('ledger-changed', () => ui.onLedgerChanged(manager))
+
+  manager.on('liveness-changed', () =>
+    ui.onFriendsChanged(manager.getFriends(), networkRef.getPeers())
+  )
 }
 
 export function getManager () {
