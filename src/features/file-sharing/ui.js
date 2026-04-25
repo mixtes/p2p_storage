@@ -1,4 +1,4 @@
-import { log, setStatus } from '../../core/logger.js'
+import { activity, setStatus } from '../../core/logger.js'
 import * as network from '../../core/network.js'
 import { pushSendFile, startReceiving } from './sync.js'
 import { pickFolderNative } from '../../ui/folder-picker.js'
@@ -20,7 +20,7 @@ export function init () {
 
   network.on('peerAdd', (peer) => {
     if (receiveFolder) {
-      startReceiving(peer, receiveFolder).catch((err) => log('auto-recv error: ' + err.message))
+      startReceiving(peer, receiveFolder).catch((err) => activity.error('auto-recv error: ' + err.message))
     }
   })
 }
@@ -28,7 +28,11 @@ export function init () {
 async function handleJoin () {
   if (network.isJoined()) return
   const code = $('topic').value.trim()
-  if (!code) return alert('Enter a topic')
+  if (!code) {
+    activity.warn('enter a topic before joining')
+    $('topic').focus()
+    return
+  }
 
   const topicHex = network.joinTopic(code)
   if (topicHex) {
@@ -38,23 +42,29 @@ async function handleJoin () {
 }
 
 async function handleSend () {
-  if (!sendFile) return alert('Pick a file to send first')
+  if (!sendFile) {
+    activity.warn('pick a file to send first')
+    return
+  }
   try {
     await pushSendFile(sendFile)
   } catch (err) {
-    log('send error: ' + err.message)
+    activity.error('send error: ' + err.message)
   }
 }
 
 async function handleReceive () {
-  if (!receiveFolder) return alert('Pick a download folder first')
+  if (!receiveFolder) {
+    activity.warn('pick a download folder first')
+    return
+  }
   const peers = network.getPeers()
-  if (peers.size === 0) log('no peers yet; downloads will begin as peers arrive')
+  if (peers.size === 0) activity.info('no peers yet; downloads will begin as peers arrive')
   for (const peer of peers.values()) {
     try {
       await startReceiving(peer, receiveFolder)
     } catch (err) {
-      log('recv error: ' + err.message)
+      activity.error('recv error: ' + err.message)
     }
   }
 }
@@ -65,7 +75,7 @@ function handleFileSelect (e) {
   sendFile = { file, name: file.name, path: file.path || null, size: file.size }
   $('sendFileLabel').textContent = file.name + ' (' + file.size + ' bytes)'
   $('sendBtn').disabled = false
-  log('file selected: ' + file.name + ' (' + file.size + ' bytes)')
+  activity.info('file selected: ' + file.name + ' (' + file.size + ' bytes)')
 }
 
 async function handleFolderPick () {
@@ -74,8 +84,7 @@ async function handleFolderPick () {
     if (!folder) return
     setReceiveFolder(folder)
   } catch (err) {
-    log('folder picker error: ' + err.message)
-    alert('Could not open folder picker: ' + err.message)
+    activity.error('folder picker error: ' + err.message)
   }
 }
 
@@ -91,7 +100,7 @@ function setReceiveFolder (folder) {
   $('recvFolderLabel').textContent = folder
   $('recvBtn').disabled = false
   try { localStorage.setItem('p2p.receiveFolder', folder) } catch {}
-  log('download folder set: ' + folder)
+  activity.info('download folder set: ' + folder)
 }
 
 function restoreReceiveFolder () {

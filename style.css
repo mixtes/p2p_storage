@@ -14,6 +14,8 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 20px 10px;
   border-bottom: 1px solid #2c3140;
+  position: sticky; top: 0; z-index: 100;
+  background: #1F2430;
 }
 .titlebar h1 { font-size: 14px; font-weight: 600; margin: 0; letter-spacing: .3px; }
 .status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8a93a6; }
@@ -53,12 +55,10 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 
 .wc-win { gap: 0; margin-left: 12px; }
 .wc-win .wc-btn {
-  width: 38px; height: 26px; color: #c4d0ff; font-size: 12px;
-  border-radius: 4px;
+  width: 38px; height: 26px; color: #c4d0ff;
+  border-radius: 0;
 }
-.wc-win .wc-min::before  { content: "\2014"; }
-.wc-win .wc-max::before  { content: "\25A1"; }
-.wc-win .wc-close::before { content: "\2715"; }
+.wc-win .wc-btn svg { display: block; }
 .wc-win .wc-btn:hover { background: #353c52; }
 .wc-win .wc-close:hover { background: #e81123; color: #fff; }
 
@@ -150,6 +150,11 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
 }
 .log div { white-space: pre-wrap; word-break: break-word; }
 .log div + div { border-top: 1px dashed #2c3344; padding-top: 4px; margin-top: 4px; }
+.log div[data-level="warn"]      { color: #f0b86b; }
+.log div[data-level="error"]     { color: #ff6b6b; }
+.log div[data-level^="dev-"]     { color: #6b7388; font-style: italic; }
+.log div[data-level="dev-warn"]  { color: #b48a4a; }
+.log div[data-level="dev-error"] { color: #b86b6b; }
 
 /* Recovery card */
 .recovery-card {
