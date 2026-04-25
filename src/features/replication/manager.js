@@ -41,6 +41,9 @@ import {
 import {
   recordHeartbeat, recordChallengeResponse, recordDisconnect
 } from '../../core/health-monitor.js'
+import {
+  recordAgreement, stashIncomingFile, recordRetrievedFile
+} from '../../core/observe-folders.js'
 
 /* ── state ───────────────────────────────────────────────────────────── */
 
@@ -342,7 +345,11 @@ export async function retrieveFile (filePath) {
     retrievedChunks.push({ index: entry.index, data: decrypted })
   }
 
-  return reassemble(retrievedChunks, totalSize)
+  const reassembled = reassemble(retrievedChunks, totalSize)
+  recordRetrievedFile(filePath, reassembled, {
+    filePath, chunkCount: count, totalSize
+  })
+  return reassembled
 }
 
 /* ── keeper side: handle agreement requests ──────────────────────────── */
@@ -374,6 +381,14 @@ async function handleAgreementRequest (payload, peerId) {
     acceptAgreement(rpc, getPublicKeyHex(), payload.neededBytes)
   }
   activity.info('accepted agreement from ' + peerId + ': ' + formatBytes(payload.neededBytes))
+  recordAgreement({
+    role: 'keeper',
+    peerId,
+    ownerKey: payload.ownerKey,
+    grantedBytes: payload.neededBytes,
+    replicationFactor: payload.replicationFactor,
+    status: 'accepted'
+  })
   emit('agreementChanged', peerId, 'accepted')
 }
 
@@ -387,6 +402,13 @@ async function handleAgreementAccepted (payload, peerId) {
     status: 'active'
   })
   activity.info('agreement accepted by peer ' + peerId + ': ' + formatBytes(payload.grantedBytes))
+  recordAgreement({
+    role: 'owner',
+    peerId,
+    keeperKey: payload.keeperKey,
+    grantedBytes: payload.grantedBytes,
+    status: 'active'
+  })
   emit('agreementChanged', peerId, 'active')
 }
 
@@ -427,6 +449,10 @@ async function handleIncomingChunkData (buf, peerId) {
 
     const drive = await getVaultDrive(ownerKey)
     await drive.put('/chunks/' + chunkId + '.enc', buf)
+
+    stashIncomingFile(chunkId.slice(0, 16) + '_' + chunkIndex + '.enc', buf, {
+      chunkId, chunkIndex, totalSize, fromPeer: peerId, ownerKey
+    })
 
     await keeperManifest.put('hosted:' + ownerKey + ':' + chunkId, {
       size: buf.length,
