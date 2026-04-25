@@ -24,10 +24,19 @@ const agreementsDrive = projectDir ? new Localdrive(projectDir + '/agreements') 
 const stashedDrive = projectDir ? new Localdrive(projectDir + '/stashed_files') : null
 const retrievedDrive = projectDir ? new Localdrive(projectDir + '/retrieved_files') : null
 
+if (!projectDir) {
+  const link = Pear?.app?.applink ?? Pear?.config?.applink ?? '<none>'
+  dev.warn('[observe] project dir not resolved (applink=' + link + ') — agreements/stashed_files/retrieved_files will not be written')
+} else {
+  dev.info('[observe] writing observable folders under ' + projectDir)
+}
+
 function resolveProjectDir () {
+  // Pear.config is deprecated in Pear 2.x; Pear.app is the replacement. Fall
+  // back so we still work on older runtimes.
+  const link = Pear?.app?.applink ?? Pear?.config?.applink
+  if (!link) return null
   try {
-    const link = Pear?.config?.applink
-    if (!link) return null
     const u = new URL(link)
     if (u.protocol === 'file:') {
       let p = decodeURIComponent(u.pathname)
