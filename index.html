@@ -38,37 +38,36 @@
       </section>
 
       <section class="card">
-        <h2>2. Send a folder</h2>
+        <h2>2. Send a file</h2>
         <p class="hint">
-          Local folder &rarr; your Hyperdrive. Peers on the topic will mirror it
-          into their receive folder.
+          Pick a single file. On Send, it is written into your Hyperdrive and
+          peers receive it into their download folder.
         </p>
         <div class="row">
-          <button id="sendPickBtn" type="button">Choose folder…</button>
-          <button id="sendBtn" disabled>Mirror &rarr; drive</button>
+          <button id="sendPickBtn" type="button">Choose file…</button>
+          <button id="sendBtn" disabled>Send</button>
         </div>
         <div class="kv">
-          <span>send folder</span>
-          <code id="sendFolderLabel">(none selected)</code>
+          <span>file to send</span>
+          <code id="sendFileLabel">(none selected)</code>
         </div>
-        <input id="sendFolderInput" type="file" webkitdirectory directory multiple hidden />
+        <input id="sendFileInput" type="file" hidden />
       </section>
 
       <section class="card">
-        <h2>3. Receive into a folder</h2>
+        <h2>3. Choose a folder</h2>
         <p class="hint">
-          Each peer&rsquo;s Hyperdrive &rarr; this local folder. Continues
-          syncing as new files arrive.
+          Pick a folder where incoming files will be saved. Once selected,
+          press Receive to start downloading from peers.
         </p>
         <div class="row">
           <button id="recvPickBtn" type="button">Choose folder…</button>
-          <button id="recvBtn" disabled>Start receiving</button>
+          <button id="recvBtn" disabled>Receive</button>
         </div>
         <div class="kv">
-          <span>receive folder</span>
+          <span>save into</span>
           <code id="recvFolderLabel">(none selected)</code>
         </div>
-        <input id="recvFolderInput" type="file" webkitdirectory directory hidden />
       </section>
 
       <section class="card">

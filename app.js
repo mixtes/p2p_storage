@@ -28,7 +28,7 @@ teardown(() => swarm.destroy())
 // remoteKeyHex -> { drive, watcher, connPeerId }
 const peers = new Map()
 let receiveFolder = null
-let sendFolder = null
+let sendFile = null   // { name, path, size }
 let joined = false
 
 const $ = (id) => document.getElementById(id)
@@ -147,13 +147,13 @@ function renderPeers () {
   }
 }
 
-// --- Send: local folder -> our Hyperdrive --------------------------------
-async function pushSendFolder() {
-  if (!sendFolder) return
-  const local = new Localdrive(sendFolder)
-  const mirror = new MirrorDrive(local, localDrive)
-  await mirror.done()
-  log(`pushed ${sendFolder} -> drive v${localDrive.version} (+${mirror.count.add} ~${mirror.count.change} -${mirror.count.remove})`)
+// --- Send: a single local file -> our Hyperdrive -------------------------
+async function pushSendFile () {
+  if (!sendFile) return
+  const name = '/' + sendFile.name
+  const buf = b4a.from(await sendFile.file.arrayBuffer())
+  await localDrive.put(name, buf)
+  log(`sent ${sendFile.name} (${buf.length} bytes) -> drive v${localDrive.version}`)
 }
 
 // --- Receive: a peer's Hyperdrive -> local folder, with live updates -----
@@ -199,19 +199,19 @@ $('joinBtn').addEventListener('click', async () => {
 })
 
 $('sendBtn').addEventListener('click', async () => {
-  if (!sendFolder) return alert('Pick a folder to share first')
-  log('mirror->drive clicked, sendFolder=' + sendFolder + ', peers=' + peers.size)
+  if (!sendFile) return alert('Pick a file to send first')
+  log('send clicked: ' + sendFile.name + ' (' + sendFile.size + ' bytes), peers=' + peers.size)
   try {
-    await pushSendFolder()
+    await pushSendFile()
   } catch (err) {
     log('send error: ' + err.message)
   }
 })
 
 $('recvBtn').addEventListener('click', async () => {
-  if (!receiveFolder) return alert('Pick a folder to receive into first')
-  log('start receiving clicked, receiveFolder=' + receiveFolder + ', known peers=' + peers.size)
-  if (peers.size === 0) log('no peers known yet; will start receiving as soon as a peer key arrives')
+  if (!receiveFolder) return alert('Pick a download folder first')
+  log('receive clicked, downloadFolder=' + receiveFolder + ', known peers=' + peers.size)
+  if (peers.size === 0) log('no peers known yet; downloads will begin as peers arrive')
   for (const peer of peers.values()) {
     try { await startReceiving(peer) } catch (err) { log('recv error: ' + err.message) }
   }
@@ -219,35 +219,123 @@ $('recvBtn').addEventListener('click', async () => {
 
 // --- Folder pickers (Electron exposes file.path on <input webkitdirectory>) -
 function folderPathFromInput (input) {
-  const file = input.files && input.files[0]
-  if (!file || !file.path) return null
-  // file.path is the absolute path of the selected file inside the folder.
-  // Strip the file name to get the folder path; for nested files inside the
-  // chosen folder, also strip any subdirectory segments after the chosen root.
+  const files = input.files
+  log('folderPathFromInput: files.length=' + (files ? files.length : 0))
+  if (!files || files.length === 0) {
+    log('folderPathFromInput: no files selected (empty folder or cancel?)')
+    return null
+  }
+  const file = files[0]
+  log('folderPathFromInput: first file name=' + file.name + ' rel=' + (file.webkitRelativePath || '(none)') + ' path=' + (file.path || '(missing)'))
+  if (!file.path) {
+    log('folderPathFromInput: file.path is empty (Electron may have stripped it)')
+    return null
+  }
   const rel = file.webkitRelativePath || file.name
   const rootName = rel.split('/')[0]
   const abs = file.path
   const idx = abs.lastIndexOf(rootName)
-  if (idx === -1) return abs.replace(/[\\\/][^\\\/]*$/, '')
-  return abs.slice(0, idx + rootName.length)
+  const resolved = idx === -1
+    ? abs.replace(/[\\\/][^\\\/]*$/, '')
+    : abs.slice(0, idx + rootName.length)
+  log('folderPathFromInput: resolved=' + resolved)
+  return resolved
 }
 
-$('sendPickBtn').addEventListener('click', () => $('sendFolderInput').click())
-$('sendFolderInput').addEventListener('change', (e) => {
-  const folder = folderPathFromInput(e.target)
-  if (!folder) return
-  sendFolder = folder
-  $('sendFolderLabel').textContent = folder
+$('sendPickBtn').addEventListener('click', () => {
+  log('sendPickBtn click -> opening file picker')
+  $('sendFileInput').click()
+})
+$('sendFileInput').addEventListener('change', (e) => {
+  log('sendFileInput change: files=' + (e.target.files ? e.target.files.length : 0))
+  const file = e.target.files && e.target.files[0]
+  if (!file) {
+    log('sendFileInput: no file selected (cancelled?)')
+    return
+  }
+  log('sendFileInput: name=' + file.name + ' size=' + file.size + ' path=' + (file.path || '(missing)') + ' type=' + (file.type || '(none)'))
+  sendFile = { file, name: file.name, path: file.path || null, size: file.size }
+  $('sendFileLabel').textContent = file.name + ' (' + file.size + ' bytes)'
   $('sendBtn').disabled = false
-  log('send folder selected: ' + folder)
+  log('file selected: ' + file.name + ' (' + file.size + ' bytes)')
 })
 
-$('recvPickBtn').addEventListener('click', () => $('recvFolderInput').click())
-$('recvFolderInput').addEventListener('change', (e) => {
-  const folder = folderPathFromInput(e.target)
-  if (!folder) return
+// --- Native folder picker via a Pear worker (pear-run) ------------------
+async function pickFolderNative () {
+  log('pickFolderNative: importing pear-run…')
+  const mod = await import('pear-run')
+  const run = mod.default || mod
+  log('pickFolderNative: pear-run loaded, type=' + typeof run)
+  return new Promise((resolve, reject) => {
+    let pipe
+    try {
+      log('pickFolderNative: spawning worker ./worker-pick-folder.cjs')
+      pipe = run('./worker-pick-folder.cjs')
+    } catch (err) {
+      log('pickFolderNative: run() threw: ' + err.message)
+      return reject(err)
+    }
+    log('pickFolderNative: worker pipe obtained, waiting for data…')
+    const decoder = new TextDecoder('utf-8')
+    let buf = ''
+    pipe.on('data', (d) => {
+      const chunk = decoder.decode(d, { stream: true })
+      buf += chunk
+      log('worker data chunk: ' + JSON.stringify(chunk))
+    })
+    pipe.on('error', (err) => {
+      log('worker pipe error: ' + err.message)
+      reject(err)
+    })
+    pipe.on('crash', (info) => log('worker crash: exitCode=' + (info && info.exitCode)))
+    pipe.on('end', () => {
+      const msg = buf.trim()
+      log('worker pipe end. total buf=' + JSON.stringify(msg))
+      if (msg.startsWith('OK:')) resolve(msg.slice(3))
+      else if (msg === 'CANCEL') resolve(null)
+      else if (msg.startsWith('ERR:')) reject(new Error(msg.slice(4)))
+      else resolve(null)
+    })
+  })
+}
+
+function setReceiveFolder (folder) {
+  folder = (folder || '').trim()
+  if (!folder) {
+    receiveFolder = null
+    $('recvFolderLabel').textContent = '(none selected)'
+    $('recvBtn').disabled = true
+    return
+  }
   receiveFolder = folder
   $('recvFolderLabel').textContent = folder
   $('recvBtn').disabled = false
-  log('receive folder selected: ' + folder)
+  try { localStorage.setItem('p2p.receiveFolder', folder) } catch {}
+  log('download folder set: ' + folder)
+}
+
+$('recvPickBtn').addEventListener('click', async () => {
+  log('opening native folder picker…')
+  try {
+    const folder = await pickFolderNative()
+    if (!folder) {
+      log('folder picker cancelled')
+      return
+    }
+    setReceiveFolder(folder)
+  } catch (err) {
+    log('folder picker error: ' + err.message)
+    alert('Could not open folder picker: ' + err.message)
+  }
 })
+
+// Restore last folder, if any.
+try {
+  const saved = localStorage.getItem('p2p.receiveFolder')
+  if (saved) {
+    setReceiveFolder(saved)
+    log('restored receive folder: ' + saved)
+  }
+} catch (err) {
+  log('localStorage restore error: ' + err.message)
+}
