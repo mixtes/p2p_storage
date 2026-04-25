@@ -38,6 +38,9 @@ import {
   announceCapacity, requestAgreement, acceptAgreement, rejectAgreement,
   pushChunk, chunkStored, challengeResp, retrieveResp, revokeChunk
 } from '../../core/replication-protocol.js'
+import {
+  recordHeartbeat, recordChallengeResponse, recordDisconnect
+} from '../../core/health-monitor.js'
 
 /* ── state ───────────────────────────────────────────────────────────── */
 
@@ -110,6 +113,7 @@ export function unregisterPeer (peerId) {
   connectedPeers.delete(peerId)
   peerCapacities.delete(peerId)
   pendingBinary.delete(peerId)
+  recordDisconnect(peerId)
 }
 
 export function getConnectedPeers () {
@@ -512,6 +516,7 @@ async function handleChallenge (payload, peerId) {
 function handleChallengeResponse (payload, peerId) {
   dev.info('[repl-mgr] challenge response from ' + peerId +
     ' for chunk ' + payload.chunkId.slice(0, 12) + ': ' + payload.proof.slice(0, 16))
+  recordChallengeResponse(peerId, payload.chunkId, payload.proof)
   emit('healthChanged', { peerId, chunkId: payload.chunkId, proof: payload.proof })
 }
 
@@ -584,6 +589,7 @@ function handleHeartbeat (payload, peerId) {
     offeredBytes: (peerCapacities.get(peerId) || {}).offeredBytes || 0,
     usedBytes: payload.usedBytes
   })
+  recordHeartbeat(peerId)
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
