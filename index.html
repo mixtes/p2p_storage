@@ -44,9 +44,14 @@
           into their receive folder.
         </p>
         <div class="row">
-          <input id="sendFolder" placeholder="/absolute/path/to/folder/to/share" />
-          <button id="sendBtn">Mirror &rarr; drive</button>
+          <button id="sendPickBtn" type="button">Choose folder…</button>
+          <button id="sendBtn" disabled>Mirror &rarr; drive</button>
         </div>
+        <div class="kv">
+          <span>send folder</span>
+          <code id="sendFolderLabel">(none selected)</code>
+        </div>
+        <input id="sendFolderInput" type="file" webkitdirectory directory multiple hidden />
       </section>
 
       <section class="card">
@@ -56,9 +61,14 @@
           syncing as new files arrive.
         </p>
         <div class="row">
-          <input id="recvFolder" placeholder="/absolute/path/to/downloads" />
-          <button id="recvBtn">Start receiving</button>
+          <button id="recvPickBtn" type="button">Choose folder…</button>
+          <button id="recvBtn" disabled>Start receiving</button>
         </div>
+        <div class="kv">
+          <span>receive folder</span>
+          <code id="recvFolderLabel">(none selected)</code>
+        </div>
+        <input id="recvFolderInput" type="file" webkitdirectory directory hidden />
       </section>
 
       <section class="card">

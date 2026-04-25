@@ -17,7 +17,12 @@ await store.ready()
 const localDrive = new Hyperdrive(store.namespace('local'))
 await localDrive.ready()
 
-const swarm = new Hyperswarm()
+const swarm = new Hyperswarm({
+  maxPeers: 8,           // total peers we'll keep in the swarm
+  maxParallel: 4,        // simultaneous connection attempts
+  maxClientConnections: 4,
+  maxServerConnections: 4
+})
 teardown(() => swarm.destroy())
 
 // remoteKeyHex -> { drive, watcher, connPeerId }
@@ -111,6 +116,15 @@ async function onRemoteKey (key, connPeerId) {
   const drive = new Hyperdrive(store, key)
   await drive.ready()
   log('remote drive ready: ' + hex.slice(0, 16) + '… (version=' + drive.version + ')')
+
+  // Eagerly prefetch the entire drive in the background so blocks are
+  // already cached locally by the time MirrorDrive asks for them.
+  try {
+    drive.download('/')
+    log('prefetch started for ' + hex.slice(0, 16) + '…')
+  } catch (err) {
+    log('prefetch error: ' + err.message)
+  }
 
   const peer = { drive, watcher: null, connPeerId }
   peers.set(hex, peer)
@@ -206,24 +220,15 @@ $('joinBtn').addEventListener('click', async () => {
 
   const topic = crypto.hash(b4a.from('p2p-fileshare:' + code))
   log('joining topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '… (code="' + code + '")')
-  const discovery = swarm.join(topic, { client: true, server: true })
+  swarm.join(topic, { client: true, server: true })
   joined = true
   $('joinBtn').disabled = true
-  setStatus('joining…')
-
-  await discovery.flushed()
-  log('discovery flushed for topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '…')
-
-  // Ensure all pending peer connections are attempted
-  await swarm.flush()
   setStatus('listening on topic ' + b4a.toString(topic, 'hex').slice(0, 12), true)
-  log('swarm flushed – ready for peers (connections=' + swarm.connections.size + ' peers=' + swarm.peers.size + ')')
+  log('joined – peers will connect as they are discovered')
 })
 
 $('sendBtn').addEventListener('click', async () => {
-  const v = $('sendFolder').value.trim()
-  if (!v) return alert('Enter an absolute folder path to share')
-  sendFolder = v
+  if (!sendFolder) return alert('Pick a folder to share first')
   log('mirror->drive clicked, sendFolder=' + sendFolder + ', peers=' + peers.size)
   try {
     await pushSendFolder()
@@ -233,12 +238,45 @@ $('sendBtn').addEventListener('click', async () => {
 })
 
 $('recvBtn').addEventListener('click', async () => {
-  const v = $('recvFolder').value.trim()
-  if (!v) return alert('Enter an absolute folder path to download into')
-  receiveFolder = v
+  if (!receiveFolder) return alert('Pick a folder to receive into first')
   log('start receiving clicked, receiveFolder=' + receiveFolder + ', known peers=' + peers.size)
   if (peers.size === 0) log('no peers known yet; will start receiving as soon as a peer key arrives')
   for (const peer of peers.values()) {
     try { await startReceiving(peer) } catch (err) { log('recv error: ' + err.message) }
   }
+})
+
+// --- Folder pickers (Electron exposes file.path on <input webkitdirectory>) -
+function folderPathFromInput (input) {
+  const file = input.files && input.files[0]
+  if (!file || !file.path) return null
+  // file.path is the absolute path of the selected file inside the folder.
+  // Strip the file name to get the folder path; for nested files inside the
+  // chosen folder, also strip any subdirectory segments after the chosen root.
+  const rel = file.webkitRelativePath || file.name
+  const rootName = rel.split('/')[0]
+  const abs = file.path
+  const idx = abs.lastIndexOf(rootName)
+  if (idx === -1) return abs.replace(/[\\\/][^\\\/]*$/, '')
+  return abs.slice(0, idx + rootName.length)
+}
+
+$('sendPickBtn').addEventListener('click', () => $('sendFolderInput').click())
+$('sendFolderInput').addEventListener('change', (e) => {
+  const folder = folderPathFromInput(e.target)
+  if (!folder) return
+  sendFolder = folder
+  $('sendFolderLabel').textContent = folder
+  $('sendBtn').disabled = false
+  log('send folder selected: ' + folder)
+})
+
+$('recvPickBtn').addEventListener('click', () => $('recvFolderInput').click())
+$('recvFolderInput').addEventListener('change', (e) => {
+  const folder = folderPathFromInput(e.target)
+  if (!folder) return
+  receiveFolder = folder
+  $('recvFolderLabel').textContent = folder
+  $('recvBtn').disabled = false
+  log('receive folder selected: ' + folder)
 })
