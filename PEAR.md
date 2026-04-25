@@ -368,3 +368,21 @@ Curated from [gasolin/awesome-pears](https://github.com/gasolin/awesome-pears) a
 - [holepunchto/filesharing-react-app-example](https://github.com/holepunchto/filesharing-react-app-example) — Hyperdrive + Hyperswarm + React in a Pear desktop app (closest analogue to this repo). *tags:* gui, swarm, lifecycle.
 
 <!-- manual edits below -->
+
+## Logging convention (p2p_storage)
+
+Single sink — the in-app `<div id="log">` panel — defined in [src/core/logger.js](src/core/logger.js):
+
+- **`activity.{info,warn,error}(msg)`** — always shown. User-facing.
+- **`dev.{info,warn,error,debug}(...args)`** — shown only when `devLogs: true` in [config.json](config.json). Otherwise no-op. Lines are tagged `[dev <level>]` and styled muted/italic so they're easy to skim past.
+
+Toggle developer logs by editing [config.json](config.json):
+```json
+{ "devLogs": true }
+```
+
+Why everything goes to the activity panel: `pear-electron` does not forward renderer `console.*` to the spawning terminal (only the host entry [index.js](index.js) reaches it, and only DevTools shows renderer console output otherwise). Routing through the panel guarantees logs are visible in production runs without DevTools.
+
+Rules:
+- Never call `console.*` directly from `src/**` or [window-controls.js](window-controls.js). Use `dev.*`.
+- The CJS Bare worker ([worker-pick-folder.cjs](worker-pick-folder.cjs)) has no DOM and does not import the renderer logger; it uses `console.error('[worker:folder] …')`, which IS visible in the parent terminal because workers are spawned via `pear-run` and their pipe carries stderr.

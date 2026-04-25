@@ -5,7 +5,7 @@ import Protomux from 'protomux'
 import c from 'compact-encoding'
 import cryptoLib from 'hypercore-crypto'
 import b4a from 'b4a'
-import { log } from './logger.js'
+import { activity, dev } from './logger.js'
 import { getStore, getLocalDrive } from './store.js'
 
 let swarm = null
@@ -45,7 +45,7 @@ export async function init () {
     try { await swarm.destroy() } catch {}
   })
 
-  swarm.on('error', (err) => log('swarm error: ' + err.message))
+  swarm.on('error', (err) => dev.error('[network] swarm error:', err))
   swarm.on('connection', handleConnection)
 }
 
@@ -55,7 +55,8 @@ function handleConnection (conn, info) {
 
   try {
     const peerId = b4a.toString(conn.remotePublicKey, 'hex').slice(0, 12)
-    log('peer connected: ' + peerId)
+    activity.info('peer connected: ' + peerId)
+    dev.debug('[network] connection from', peerId, info)
 
     store.replicate(conn)
 
@@ -75,20 +76,20 @@ function handleConnection (conn, info) {
         try {
           await onRemoteKey(remoteKey, peerId)
         } catch (err) {
-          log('peer setup error: ' + err.message)
+          dev.error('[network] peer setup error (' + peerId + '):', err)
         }
       }
     })
 
     channel.open()
 
-    conn.on('error', (err) => log('conn error (' + peerId + '): ' + err.message))
+    conn.on('error', (err) => dev.error('[network] conn error (' + peerId + '):', err))
     conn.on('close', () => {
-      log('peer disconnected: ' + peerId)
+      activity.info('peer disconnected: ' + peerId)
       removePeerByConn(peerId)
     })
   } catch (err) {
-    log('connection handler error: ' + err.message)
+    dev.error('[network] connection handler error:', err)
   }
 }
 
@@ -99,9 +100,9 @@ async function onRemoteKey (key, connPeerId) {
 
   const drive = new Hyperdrive(store, key)
   await drive.ready()
-  log('remote drive ready: ' + hex.slice(0, 16) + '… (v' + drive.version + ')')
+  activity.info('remote drive ready: ' + hex.slice(0, 16) + '… (v' + drive.version + ')')
 
-  try { drive.download('/') } catch (err) { log('prefetch error: ' + err.message) }
+  try { drive.download('/') } catch (err) { dev.error('[network] prefetch error:', err) }
 
   const peer = { drive, watcher: null, connPeerId }
   peers.set(hex, peer)
@@ -122,12 +123,12 @@ function removePeerByConn (connPeerId) {
 export function joinTopic (code) {
   if (joined) return null
   const topic = cryptoLib.hash(b4a.from('p2p-fileshare:' + code))
-  log('joining topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '… (code="' + code + '")')
+  activity.info('joining topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '… (code="' + code + '")')
   swarm.join(topic, { client: true, server: true })
   joined = true
   const topicHex = b4a.toString(topic, 'hex')
   emit('join', topicHex)
-  log('joined – peers will connect as they are discovered')
+  activity.info('joined – peers will connect as they are discovered')
   return topicHex
 }
 
