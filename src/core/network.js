@@ -7,6 +7,7 @@ import cryptoLib from 'hypercore-crypto'
 import b4a from 'b4a'
 import { activity, dev } from './logger.js'
 import { getStore, getLocalDrive } from './store.js'
+import { attachReplicationChannel } from './replication-protocol.js'
 
 let swarm = null
 let joined = false
@@ -14,10 +15,14 @@ let joined = false
 // remoteKeyHex -> { drive, watcher, connPeerId }
 const peers = new Map()
 
+let replicationHandlers = null
+
 const listeners = {
   peerAdd: [],
   peerRemove: [],
-  join: []
+  join: [],
+  replicationPeer: [],
+  replicationPeerRemove: []
 }
 
 export function on (event, fn) {
@@ -60,6 +65,8 @@ function handleConnection (conn, info) {
 
     store.replicate(conn)
 
+    /* ── file-sharing key exchange channel ──────────────────────────── */
+
     const mux = Protomux.from(conn)
     let keyMessage = null
 
@@ -83,10 +90,18 @@ function handleConnection (conn, info) {
 
     channel.open()
 
+    /* ── replication protocol channel ───────────────────────────────── */
+
+    if (replicationHandlers) {
+      const rpc = attachReplicationChannel(conn, replicationHandlers, peerId)
+      emit('replicationPeer', peerId, rpc)
+    }
+
     conn.on('error', (err) => dev.error('[network] conn error (' + peerId + '):', err))
     conn.on('close', () => {
       activity.info('peer disconnected: ' + peerId)
       removePeerByConn(peerId)
+      emit('replicationPeerRemove', peerId)
     })
   } catch (err) {
     dev.error('[network] connection handler error:', err)
@@ -142,4 +157,13 @@ export function getPeers () {
 
 export function getSwarm () {
   return swarm
+}
+
+/**
+ * Register the replication protocol handlers. Called once during boot
+ * by the replication feature's init(). All subsequent connections will
+ * automatically open the p2p-replication Protomux channel.
+ */
+export function setReplicationHandlers (handlers) {
+  replicationHandlers = handlers
 }
