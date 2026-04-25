@@ -2,83 +2,116 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>P2P FileShare</title>
+    <title>P2P Storage</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <header class="titlebar" id="titlebar">
-      <h1>P2P FileShare</h1>
+    <header class="titlebar">
+      <h1>P2P Storage</h1>
       <div class="status">
         <span class="dot" id="statusDot"></span>
         <span id="statusText">idle</span>
       </div>
     </header>
-    <script type="module">
-      import { mountWindowControls } from './window-controls.js'
-      mountWindowControls(document.getElementById('titlebar'))
-    </script>
+    <!-- Shared: topic join + peer list (always visible) -->
+    <section class="card" id="network-card">
+      <h2>Network</h2>
+      <p class="hint">
+        Both devices type the same topic string. Anyone on the same topic
+        connects automatically &mdash; no server in the middle.
+      </p>
+      <div class="row">
+        <input id="topic" placeholder="e.g. apple-river-92" />
+        <button id="joinBtn">Join</button>
+      </div>
+      <div class="kv">
+        <span>my drive key</span>
+        <code id="myKey">&hellip;</code>
+      </div>
+      <div class="kv">
+        <span>connected peers</span>
+        <ul id="peers" class="peers">
+          <li class="empty">none yet</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Feature tabs -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="file-sharing">File Sharing</button>
+      <button class="tab-btn" data-tab="replication">Storage Replication</button>
+      <button class="tab-btn" data-tab="friend-storage">Friend Storage</button>
+    </nav>
 
     <main>
-      <section class="card">
-        <h2>1. Join a topic</h2>
-        <p class="hint">
-          Both devices type the same topic string. Anyone on the same topic
-          connects automatically &mdash; no server in the middle.
-        </p>
-        <div class="row">
-          <input id="topic" placeholder="e.g. apple-river-92" />
-          <button id="joinBtn">Join</button>
-        </div>
-        <div class="kv">
-          <span>my drive key</span>
-          <code id="myKey">…</code>
-        </div>
-        <div class="kv">
-          <span>connected peers</span>
-          <ul id="peers" class="peers">
-            <li class="empty">none yet</li>
-          </ul>
-        </div>
-      </section>
+      <!-- Feature 1: Basic file sharing (current demo) -->
+      <div id="view-file-sharing" class="feature-view">
+        <section class="card">
+          <h2>Send a file</h2>
+          <p class="hint">
+            Pick a single file. On Send, it is written into your Hyperdrive and
+            peers receive it into their download folder.
+          </p>
+          <div class="row">
+            <button id="sendPickBtn" type="button">Choose file&hellip;</button>
+            <button id="sendBtn" disabled>Send</button>
+          </div>
+          <div class="kv">
+            <span>file to send</span>
+            <code id="sendFileLabel">(none selected)</code>
+          </div>
+          <input id="sendFileInput" type="file" hidden />
+        </section>
 
-      <section class="card">
-        <h2>2. Send a file</h2>
-        <p class="hint">
-          Pick a single file. On Send, it is written into your Hyperdrive and
-          peers receive it into their download folder.
-        </p>
-        <div class="row">
-          <button id="sendPickBtn" type="button">Choose file…</button>
-          <button id="sendBtn" disabled>Send</button>
-        </div>
-        <div class="kv">
-          <span>file to send</span>
-          <code id="sendFileLabel">(none selected)</code>
-        </div>
-        <input id="sendFileInput" type="file" hidden />
-      </section>
+        <section class="card">
+          <h2>Receive files</h2>
+          <p class="hint">
+            Pick a folder where incoming files will be saved. Once selected,
+            press Receive to start downloading from peers.
+          </p>
+          <div class="row">
+            <button id="recvPickBtn" type="button">Choose folder&hellip;</button>
+            <button id="recvBtn" disabled>Receive</button>
+          </div>
+          <div class="kv">
+            <span>save into</span>
+            <code id="recvFolderLabel">(none selected)</code>
+          </div>
+        </section>
+      </div>
 
-      <section class="card">
-        <h2>3. Choose a folder</h2>
-        <p class="hint">
-          Pick a folder where incoming files will be saved. Once selected,
-          press Receive to start downloading from peers.
-        </p>
-        <div class="row">
-          <button id="recvPickBtn" type="button">Choose folder…</button>
-          <button id="recvBtn" disabled>Receive</button>
-        </div>
-        <div class="kv">
-          <span>save into</span>
-          <code id="recvFolderLabel">(none selected)</code>
-        </div>
-      </section>
+      <!-- Feature 2: Storage Replication (stub) -->
+      <div id="view-replication" class="feature-view hidden">
+        <section class="card">
+          <h2>Storage Replication</h2>
+          <p class="hint">
+            Symmetric encrypted backup. You store encrypted copies of a peer's
+            important files, and they store yours. Both sides reserve disk space
+            for the other.
+          </p>
+          <p class="placeholder">Coming soon &mdash; not yet implemented.</p>
+        </section>
+      </div>
 
-      <section class="card">
-        <h2>Activity</h2>
-        <div id="log" class="log"></div>
-      </section>
+      <!-- Feature 3: Friend Storage (stub) -->
+      <div id="view-friend-storage" class="feature-view hidden">
+        <section class="card">
+          <h2>Friend Storage</h2>
+          <p class="hint">
+            Ask a friend to hold encrypted files for you when you're low on
+            local space. They can't read your data &mdash; only you can decrypt
+            it when you retrieve it.
+          </p>
+          <p class="placeholder">Coming soon &mdash; not yet implemented.</p>
+        </section>
+      </div>
     </main>
+
+    <!-- Activity log (always visible) -->
+    <section class="card" id="log-card">
+      <h2>Activity</h2>
+      <div id="log" class="log"></div>
+    </section>
 
     <script type="module" src="./app.js"></script>
   </body>
