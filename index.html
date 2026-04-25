@@ -6,13 +6,18 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <header class="titlebar">
+    <header class="titlebar" id="titlebar">
       <h1>P2P Storage</h1>
       <div class="status">
         <span class="dot" id="statusDot"></span>
         <span id="statusText">idle</span>
       </div>
     </header>
+    <script type="module">
+      import { mountWindowControls } from './window-controls.js'
+      mountWindowControls(document.getElementById('titlebar'))
+    </script>
+
     <!-- Shared: topic join + peer list (always visible) -->
     <section class="card" id="network-card">
       <h2>Network</h2>
