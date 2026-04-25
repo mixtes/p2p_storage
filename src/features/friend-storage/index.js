@@ -1,21 +1,32 @@
 /**
- * Friend Storage Feature
+ * Friend Storage Feature — entry point
  *
- * Altruistic / group storage: friends store encrypted files for each
- * other when someone doesn't have enough local space. Files are
- * encrypted before upload -- only the owner can decrypt after retrieval.
- *
- * Entry point -- wires manager, sync, and UI together.
+ * Wires the manager, sync channel, network events, and UI together.
  */
 
 import { FriendStorageManager } from './manager.js'
+import { setupChannel } from './sync.js'
 import * as ui from './ui.js'
 
 let manager = null
 
-export function init () {
+export function init (networkRef) {
   manager = new FriendStorageManager()
-  ui.init()
+
+  ui.init(manager, networkRef.getPeers)
+
+  networkRef.on('peerAdd', (peer, hex) => {
+    setupChannel(peer, hex, manager)
+    ui.onPeerChange(networkRef.getPeers())
+  })
+
+  networkRef.on('peerRemove', () => ui.onPeerChange(networkRef.getPeers()))
+
+  manager.on('friends-changed', () =>
+    ui.onFriendsChanged(manager.getFriends(), networkRef.getPeers())
+  )
+
+  manager.on('ledger-changed', () => ui.onLedgerChanged(manager))
 }
 
 export function getManager () {

@@ -98,17 +98,105 @@
         </section>
       </div>
 
-      <!-- Feature 3: Friend Storage (stub) -->
+      <!-- Feature 3: Friend Storage -->
       <div id="view-friend-storage" class="feature-view hidden">
-        <section class="card">
-          <h2>Friend Storage</h2>
+
+        <!-- Friends Network -->
+        <section class="card" id="fs-network-card">
+          <h2>Friends Network</h2>
           <p class="hint">
-            Ask a friend to hold encrypted files for you when you're low on
-            local space. They can't read your data &mdash; only you can decrypt
-            it when you retrieve it.
+            Connected peers appear below. Add the ones you trust &mdash; only
+            friends can exchange storage with you.
           </p>
-          <p class="placeholder">Coming soon &mdash; not yet implemented.</p>
+          <div class="kv">
+            <span>connected peers</span>
+            <ul id="fs-peer-list" class="fs-friend-list">
+              <li class="empty">No peers connected yet — join a topic first</li>
+            </ul>
+          </div>
+          <div class="kv" style="margin-top:14px">
+            <span>my friends</span>
+            <ul id="fs-friend-list" class="fs-friend-list">
+              <li class="empty">No friends added yet</li>
+            </ul>
+          </div>
         </section>
+
+        <!-- Sub-tab navigation -->
+        <nav class="fs-sub-tabs">
+          <button class="fs-tab-btn active" data-fs-tab="request">Request Memory</button>
+          <button class="fs-tab-btn" data-fs-tab="give">Give Memory</button>
+        </nav>
+
+        <!-- Request Memory view -->
+        <div id="fs-view-request" class="fs-view">
+          <section class="card">
+            <h2>Request Storage from a Friend</h2>
+            <p class="hint">
+              Choose an online friend and a file. They will hold an encrypted
+              copy until you retrieve it.
+            </p>
+            <div class="row" style="margin-bottom:8px">
+              <select id="fs-req-peer" class="fs-select">
+                <option value="" disabled selected>— no online friends —</option>
+              </select>
+            </div>
+            <div class="row">
+              <button id="fs-req-pick-btn" type="button">Choose file&hellip;</button>
+              <button id="fs-req-send-btn" disabled>Request Storage</button>
+            </div>
+            <div class="kv">
+              <span>file to store</span>
+              <code id="fs-req-file-label">(none selected)</code>
+            </div>
+            <div class="kv">
+              <span>size limit (MB)</span>
+              <input id="fs-req-size-limit" type="number" min="1" placeholder="e.g. 500"
+                style="max-width:100px; flex:none" />
+            </div>
+            <input id="fs-req-file-input" type="file" hidden />
+          </section>
+
+          <section class="card">
+            <h2>Files Stored by Friends</h2>
+            <ul id="fs-req-list" class="fs-ledger-list">
+              <li class="empty">No files stored with friends yet</li>
+            </ul>
+          </section>
+        </div>
+
+        <!-- Give Memory view -->
+        <div id="fs-view-give" class="fs-view hidden">
+          <section class="card">
+            <h2>Offer Your Storage</h2>
+            <p class="hint">
+              Set how much disk space you are willing to share with friends.
+            </p>
+            <div class="row" style="align-items:center; gap:10px">
+              <label class="fs-label" for="fs-give-quota">Offer up to</label>
+              <input id="fs-give-quota" type="number" min="1" placeholder="e.g. 1024"
+                style="max-width:110px; flex:none" />
+              <span style="font-size:13px; color:#8a93a6">MB</span>
+              <button id="fs-give-save-btn">Save</button>
+              <span id="fs-give-saved-msg" class="fs-saved-msg"></span>
+            </div>
+          </section>
+
+          <section class="card">
+            <h2>Pending Requests</h2>
+            <ul id="fs-give-pending" class="fs-ledger-list">
+              <li class="empty">No pending requests</li>
+            </ul>
+          </section>
+
+          <section class="card">
+            <h2>Currently Hosting</h2>
+            <ul id="fs-give-hosting" class="fs-ledger-list">
+              <li class="empty">Not hosting any files yet</li>
+            </ul>
+          </section>
+        </div>
+
       </div>
     </main>
 

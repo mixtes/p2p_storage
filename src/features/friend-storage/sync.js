@@ -1,24 +1,78 @@
 /**
  * Friend Storage Sync
  *
- * Handles encrypted file transfer for storage favours.
- *
- * Flow (to be implemented):
- *  1. Owner encrypts file with their personal key
- *  2. Encrypted blob is sent to the friend's dedicated Hyperdrive
- *  3. Friend stores it locally (cannot decrypt, only holds)
- *  4. On retrieval: owner requests blob, friend serves it,
- *     owner decrypts locally
+ * Opens a 'p2p-friend-storage' Protomux channel on every peer connection.
+ * Messages:
+ *   0 — REQUEST  { fileName: string, data: Buffer }  requester → host
+ *   1 — ACCEPT   fileName: string                    host → requester
+ *   2 — DECLINE  fileName: string                    host → requester
  */
 
-export async function uploadEncrypted (file, drive, encryptionKey) {
-  // TODO: encrypt file, write encrypted blob to friend's drive
+import c from 'compact-encoding'
+
+// Encodes { fileName, data } as [string][buffer]
+const requestEncoding = {
+  preencode (state, msg) {
+    c.string.preencode(state, msg.fileName)
+    c.buffer.preencode(state, msg.data)
+  },
+  encode (state, msg) {
+    c.string.encode(state, msg.fileName)
+    c.buffer.encode(state, msg.data)
+  },
+  decode (state) {
+    return {
+      fileName: c.string.decode(state),
+      data: c.buffer.decode(state)
+    }
+  }
 }
 
-export async function downloadAndDecrypt (drive, fileName, decryptionKey) {
-  // TODO: read encrypted blob from friend's drive, decrypt locally
-}
+export function setupChannel (peer, hex, manager) {
+  const { mux } = peer
+  if (!mux) return
 
-export async function serveStoredFiles (vaultPath, peerDrive) {
-  // TODO: mirror locally-stored blobs to the requesting peer
+  let msgRequest, msgAccept, msgDecline
+  let open = false
+
+  const channel = mux.createChannel({
+    protocol: 'p2p-friend-storage',
+    onopen  () { open = true },
+    onclose () { open = false; manager.unregisterChannel(hex) }
+  })
+
+  msgRequest = channel.addMessage({
+    encoding: requestEncoding,
+    onmessage ({ fileName, data }) {
+      manager._onIncomingRequest(hex, fileName, data)
+    }
+  })
+
+  msgAccept = channel.addMessage({
+    encoding: c.string,
+    onmessage (fileName) {
+      manager._onRequestAccepted(hex, fileName)
+    }
+  })
+
+  msgDecline = channel.addMessage({
+    encoding: c.string,
+    onmessage (fileName) {
+      manager._onRequestDeclined(hex, fileName)
+    }
+  })
+
+  channel.open()
+
+  manager.registerChannel(hex, {
+    sendRequest (fileName, data) {
+      if (open) msgRequest.send({ fileName, data })
+    },
+    sendAccept (fileName) {
+      if (open) msgAccept.send(fileName)
+    },
+    sendDecline (fileName) {
+      if (open) msgDecline.send(fileName)
+    }
+  })
 }

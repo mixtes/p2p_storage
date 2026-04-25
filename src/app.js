@@ -18,6 +18,6 @@ network.on('peerRemove', () => renderPeers(network.getPeers()))
 
 fileSharing.init()
 replication.init()
-friendStorage.init()
+friendStorage.init(network)
 
 router.init()

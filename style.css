@@ -162,3 +162,135 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
   padding: 20px 0;
   text-align: center;
 }
+
+/* ── Friend Storage ─────────────────────────────────────── */
+
+/* Sub-tabs (inside the feature view, smaller than main tabs) */
+.fs-sub-tabs {
+  display: flex;
+  gap: 0;
+  padding: 14px 0 0;
+}
+.fs-tab-btn {
+  background: transparent;
+  color: #8a93a6;
+  border: 1px solid #2f3648;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 7px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.fs-tab-btn:hover { color: #c4d0ff; background: #1c2230; }
+.fs-tab-btn.active {
+  background: #1c2230;
+  color: #E6E6E6;
+  border-color: #5b8def;
+  border-bottom: 1px solid #1c2230;
+}
+
+/* fs-view sits inside the feature-view; same hidden toggle */
+.fs-view { padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+.fs-view.hidden { display: none; }
+
+/* Friends list */
+.fs-friend-list {
+  list-style: none; padding: 0; margin: 10px 0 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.friend-card {
+  display: flex; align-items: center; gap: 10px;
+  background: #1c2230; border: 1px solid #353c52;
+  border-radius: 6px; padding: 7px 10px;
+  font-size: 12px;
+}
+.fs-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #555c70; flex-shrink: 0;
+  transition: background .2s;
+}
+.fs-dot.on { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.18); }
+.fs-nick { font-weight: 600; color: #E6E6E6; min-width: 80px; }
+.fs-short-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: #c4d0ff; flex: 1;
+}
+.fs-status-text { font-size: 11px; color: #6b7388; min-width: 46px; }
+.fs-add-btn {
+  background: #102a1e; color: #4ade80; border: 1px solid #1f4d36;
+  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+  flex-shrink: 0;
+}
+.fs-add-btn:hover { background: #1a3d2a; }
+.fs-remove-btn {
+  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
+  border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+  flex-shrink: 0;
+}
+.fs-remove-btn:hover { background: #3a1f1f; }
+
+/* Select */
+.fs-select {
+  flex: 1; min-width: 0;
+  background: #1c2230; border: 1px solid #353c52; border-radius: 6px;
+  padding: 8px 10px; color: #E6E6E6; font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.fs-select:focus { outline: none; border-color: #5b8def; }
+
+/* Ledger rows (request + give lists) */
+.fs-ledger-list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.fs-ledger-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #1c2230; border: 1px solid #353c52;
+  border-radius: 6px; padding: 7px 10px; font-size: 12px;
+}
+.fs-file-name { font-weight: 600; color: #E6E6E6; flex: 1; min-width: 0; word-break: break-all; }
+.fs-ledger-peer { font-size: 11px; color: #8a93a6; }
+.fs-size { font-size: 11px; color: #6b7388; }
+
+/* Status badges */
+.badge {
+  font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 99px;
+}
+.badge-pending  { background: #3a3010; color: #f5c542; }
+.badge-hosted   { background: #102a1e; color: #4ade80; }
+.badge-requested { background: #102038; color: #5b8def; }
+
+/* Accept / Decline buttons */
+.fs-accept-btn {
+  background: #102a1e; color: #4ade80; border: 1px solid #1f4d36;
+  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.fs-accept-btn:hover { background: #1a3d2a; }
+.fs-decline-btn {
+  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
+  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.fs-decline-btn:hover { background: #3a1f1f; }
+.fs-evict-btn {
+  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
+  border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+}
+.fs-evict-btn:hover { background: #3a1f1f; }
+
+/* Storage bar */
+.storage-bar {
+  flex: 1; min-width: 60px; height: 6px; background: #353c52;
+  border-radius: 99px; overflow: hidden;
+}
+.storage-bar-fill { height: 100%; background: #5b8def; border-radius: 99px; transition: width .3s; }
+
+/* Misc */
+.fs-error { font-size: 11px; color: #e05c5c; margin: 4px 0 0; min-height: 14px; }
+.fs-saved-msg { font-size: 11px; color: #4ade80; }
+.fs-label { font-size: 13px; color: #8a93a6; white-space: nowrap; }

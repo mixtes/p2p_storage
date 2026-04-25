@@ -73,7 +73,7 @@ function handleConnection (conn, info) {
       encoding: c.raw,
       async onmessage (remoteKey) {
         try {
-          await onRemoteKey(remoteKey, peerId)
+          await onRemoteKey(remoteKey, peerId, mux)
         } catch (err) {
           log('peer setup error: ' + err.message)
         }
@@ -92,7 +92,7 @@ function handleConnection (conn, info) {
   }
 }
 
-async function onRemoteKey (key, connPeerId) {
+async function onRemoteKey (key, connPeerId, mux) {
   const store = getStore()
   const hex = b4a.toString(key, 'hex')
   if (peers.has(hex)) return
@@ -103,7 +103,7 @@ async function onRemoteKey (key, connPeerId) {
 
   try { drive.download('/') } catch (err) { log('prefetch error: ' + err.message) }
 
-  const peer = { drive, watcher: null, connPeerId }
+  const peer = { drive, watcher: null, connPeerId, mux }
   peers.set(hex, peer)
   emit('peerAdd', peer, hex)
 }
