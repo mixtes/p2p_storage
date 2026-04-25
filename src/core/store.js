@@ -7,13 +7,18 @@ let store = null
 let localDrive = null
 
 export async function init () {
-  const { config } = Pear
+  const { config, teardown } = Pear
 
   store = new Corestore(config.storage)
   await store.ready()
 
   localDrive = new Hyperdrive(store.namespace('local'))
   await localDrive.ready()
+
+  teardown(async () => {
+    try { await localDrive.close() } catch {}
+    try { await store.close() } catch {}
+  })
 
   return { store, localDrive }
 }

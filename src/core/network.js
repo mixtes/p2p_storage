@@ -37,7 +37,13 @@ export async function init () {
     maxClientConnections: 4,
     maxServerConnections: 4
   })
-  teardown(() => swarm.destroy())
+  teardown(async () => {
+    for (const peer of peers.values()) {
+      if (peer.watcher) { try { await peer.watcher.destroy() } catch {} }
+    }
+    peers.clear()
+    try { await swarm.destroy() } catch {}
+  })
 
   swarm.on('error', (err) => log('swarm error: ' + err.message))
   swarm.on('connection', handleConnection)
