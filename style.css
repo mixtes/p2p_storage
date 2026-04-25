@@ -211,3 +211,100 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
   padding: 20px 0;
   text-align: center;
 }
+
+/* ── Replication UI ──────────────────────────────────────────────────── */
+
+.repl-field {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.repl-field label {
+  font-size: 11px; color: #8a93a6; text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+/* Health indicators */
+.repl-health-row {
+  display: flex; gap: 20px; margin-bottom: 12px;
+}
+.health-stat {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #c4d0ff;
+}
+.health-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.health-green { background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15); }
+.health-yellow { background: #f0b86b; box-shadow: 0 0 0 3px rgba(240, 184, 107, 0.15); }
+.health-red { background: #ff6b6b; box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.15); }
+
+/* Per-file health bars */
+.file-health-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid #2c3344;
+}
+.file-health-row:last-child { border-bottom: 0; }
+
+.file-health-name {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #c4d0ff;
+  min-width: 120px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.health-bar {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: #1c2230;
+  overflow: hidden;
+}
+.health-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width .3s ease;
+}
+.bar-green { background: #4ade80; }
+.bar-yellow { background: #f0b86b; }
+.bar-red { background: #ff6b6b; }
+
+.file-health-pct {
+  font-size: 11px; color: #8a93a6;
+  min-width: 32px; text-align: right;
+}
+
+/* Agreement cards */
+.repl-agreements {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.agreement-card {
+  display: flex; align-items: center; gap: 10px;
+  background: #1c2230;
+  border: 1px solid #2c3344;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.agreement-peer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #c4d0ff;
+  flex: 1;
+}
+.agreement-detail {
+  color: #8a93a6;
+}
+.agreement-status {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: .5px; color: #4ade80;
+}
+
+/* Retrieve dropdown */
+#replRetrieveSelect {
+  flex: 1; min-width: 0;
+  background: #1c2230; border: 1px solid #353c52; border-radius: 6px;
+  padding: 8px 10px; color: #E6E6E6; font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  appearance: auto;
+}
+#replRetrieveSelect:focus { outline: none; border-color: #5b8def; }

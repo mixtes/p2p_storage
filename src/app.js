@@ -16,7 +16,7 @@ displayDriveKey(store.getLocalKeyHex())
 
 const { isNew } = await identity.init(corestore)
 const pubHex = identity.getPublicKeyHex()
-log('identity ready: ' + pubHex.slice(0, 16) + '…')
+activity.info('identity ready: ' + pubHex.slice(0, 16) + '…')
 displayPublicKey(pubHex)
 if (isNew) showRecoverySeed(identity.getRecoverySeedHex())
 
@@ -26,7 +26,7 @@ network.on('peerAdd', () => renderPeers(network.getPeers()))
 network.on('peerRemove', () => renderPeers(network.getPeers()))
 
 fileSharing.init()
-replication.init()
+await replication.init()
 friendStorage.init()
 
 router.init()
