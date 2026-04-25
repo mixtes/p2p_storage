@@ -19,6 +19,9 @@
     "dev": "pear run -d .",
     "start": "pear run ."
   },
+  "overrides": {
+    "rabin-stream": "file:./stubs/rabin-stream"
+  },
   "dependencies": {
     "b4a": "^1.8.0",
     "corestore": "^7.9.2",
