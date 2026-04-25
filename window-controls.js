@@ -1,5 +1,8 @@
 /* global Pear */
 
+import ui from 'pear-electron'
+import { dev } from './src/core/logger.js'
+
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 function clearPersistedSelections () {
@@ -22,11 +25,11 @@ function clearPersistedSelections () {
 }
 
 function getWindow () {
-  return Pear.Window?.self || Pear.app
+  return ui.app
 }
 
 async function onMinimize () {
-  try { await getWindow().minimize() } catch (err) { console.error('minimize failed', err) }
+  try { await getWindow().minimize() } catch (err) { dev.error('[window-controls] minimize failed:', err) }
 }
 
 async function onToggleMaximize () {
