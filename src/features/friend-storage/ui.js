@@ -14,6 +14,7 @@ export function init () {
   // Request side
   $('fsPickBtn').addEventListener('click', () => $('fsFileInput').click())
   $('fsFileInput').addEventListener('change', handleFilePick)
+  $('fsPeerSelect').addEventListener('change', updateStoreBtn)
   $('fsStoreBtn').addEventListener('click', handleStore)
   $('fsRetrieveBtn').addEventListener('click', handleRetrieve)
   $('fsRetrieveSelect').addEventListener('change', () => {
@@ -76,17 +77,21 @@ export function refreshPeerList () {
   }
 
   if (current) select.value = current
-  $('fsStoreBtn').disabled = !(fsFile && select.value)
+  updateStoreBtn()
 }
 
 /* ── request side: store ─────────────────────────────────────────────── */
+
+function updateStoreBtn () {
+  $('fsStoreBtn').disabled = !(fsFile && $('fsPeerSelect').value)
+}
 
 function handleFilePick (e) {
   const file = e.target.files && e.target.files[0]
   if (!file) return
   fsFile = file
   $('fsFileLabel').textContent = file.name + ' (' + formatBytes(file.size) + ')'
-  $('fsStoreBtn').disabled = !$('fsPeerSelect').value
+  updateStoreBtn()
 }
 
 async function handleStore () {
