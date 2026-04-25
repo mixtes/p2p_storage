@@ -161,7 +161,7 @@ export class FriendStorageManager {
     this._updateOutgoingStatus(keyHex, fileName, 'queued')
     this._save()
     emit('ledger-changed')
-    activity.warn('friend-storage: friend not online — "' + fileName + '" queued')
+    activity.warn('friend-storage: no open channel to ' + keyHex.slice(0, 12) + '\u2026 \u2014 "' + fileName + '" queued (will send when channel opens)')
   }
 
   _enqueue (keyHex, item) {

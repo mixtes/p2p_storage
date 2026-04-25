@@ -10,6 +10,7 @@
 import Localdrive from 'localdrive'
 import { activity } from '../../core/logger.js'
 import { pickFolderNative } from '../../ui/folder-picker.js'
+import { retryChannel } from './index.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -82,9 +83,15 @@ function _bindFriendNetwork () {
 
   // Remove-button delegation on the friends list
   $('fs-friend-list').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove-key]')
-    if (!btn) return
-    _manager.removeFriend(btn.dataset.removeKey)
+    const removeBtn = e.target.closest('[data-remove-key]')
+    if (removeBtn) {
+      _manager.removeFriend(removeBtn.dataset.removeKey)
+      return
+    }
+    const retryBtn = e.target.closest('[data-retry-key]')
+    if (retryBtn) {
+      retryChannel(retryBtn.dataset.retryKey)
+    }
   })
 }
 
@@ -127,9 +134,12 @@ export function renderFriendList (friends, peers) {
   }
 
   for (const { keyHex, nick } of friends) {
-    const liveness = onlineSet.has(keyHex)
+    const isConnected = onlineSet.has(keyHex)
+    const liveness = isConnected
       ? (typeof _manager.livenessFor === 'function' ? _manager.livenessFor(keyHex) : 'live')
       : 'offline'
+    // Connected on swarm but no friend-storage channel paired -> let the user retry.
+    const showRetry = isConnected && liveness === 'offline'
     const display = nick || (keyHex.slice(0, 8) + '…' + keyHex.slice(-4))
     const li = document.createElement('li')
     li.className = 'friend-card'
@@ -138,6 +148,7 @@ export function renderFriendList (friends, peers) {
       <span class="fs-nick">${_esc(display)}</span>
       <code class="fs-short-key">${keyHex.slice(0, 8)}…${keyHex.slice(-4)}</code>
       <span class="fs-status-text">${liveness}</span>
+      ${showRetry ? `<button class="fs-retry-btn" data-retry-key="${keyHex}" title="Re-open friend-storage channel">Retry</button>` : ''}
       <button class="fs-remove-btn" data-remove-key="${keyHex}">Remove</button>
     `
     ul.appendChild(li)

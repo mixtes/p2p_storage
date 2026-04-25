@@ -14,7 +14,7 @@
  */
 
 import c from 'compact-encoding'
-import { dev } from '../../core/logger.js'
+import { activity, dev } from '../../core/logger.js'
 
 // { fileName, data } → [string][buffer]
 const fileEncoding = {
@@ -55,7 +55,7 @@ const errorEncoding = {
 export function setupChannel (peer, hex, manager) {
   const { mux } = peer
   if (!mux) {
-    dev.error('[fs] peer has no mux; cannot open friend-storage channel', hex.slice(0, 12))
+    activity.error('friend-storage: peer ' + hex.slice(0, 12) + '… has no mux; channel not opened')
     return
   }
 
@@ -63,9 +63,11 @@ export function setupChannel (peer, hex, manager) {
   // walks already-connected peers). Protomux returns null on duplicate, but
   // an explicit guard keeps the dev log clean.
   if (manager._channelExists(hex)) {
-    dev.debug('[fs] channel already set up for', hex.slice(0, 12))
+    dev.debug('[fs] channel already open for', hex.slice(0, 12))
     return
   }
+
+  activity.info('friend-storage: opening channel to ' + hex.slice(0, 12) + '…')
 
   // The api object captured by message handlers below; only registered with
   // the manager once `channel.onopen` fires, so manager only ever sees
@@ -75,11 +77,11 @@ export function setupChannel (peer, hex, manager) {
   const channel = mux.createChannel({
     protocol: 'p2p-friend-storage',
     onopen () {
-      dev.debug('[fs] channel open', hex.slice(0, 12))
+      activity.info('friend-storage: channel ready with ' + hex.slice(0, 12) + '…')
       manager.registerChannel(hex, api)
     },
     onclose () {
-      dev.debug('[fs] channel close', hex.slice(0, 12))
+      activity.warn('friend-storage: channel closed with ' + hex.slice(0, 12) + '…')
       manager.unregisterChannel(hex)
     }
   })
@@ -87,7 +89,7 @@ export function setupChannel (peer, hex, manager) {
   if (!channel) {
     // Either the protocol clashed with an existing channel on this mux,
     // or the remote hasn't advertised this protocol (older peer).
-    dev.warn('[fs] mux.createChannel returned null for', hex.slice(0, 12))
+    activity.error('friend-storage: mux.createChannel returned null for ' + hex.slice(0, 12) + '… (duplicate or remote on older code?)')
     return
   }
 
@@ -143,5 +145,5 @@ export function setupChannel (peer, hex, manager) {
   }
 
   channel.open()
-  dev.debug('[fs] channel created', hex.slice(0, 12))
+  dev.debug('[fs] channel.open() sent for', hex.slice(0, 12))
 }
