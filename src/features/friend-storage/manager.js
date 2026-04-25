@@ -295,6 +295,32 @@ export class FriendStorageManager {
     if (entry) entry.status = status
   }
 
+  // Cancel an outgoing entry that hasn't been delivered yet (status: queued).
+  // Drops the file bytes from the outbound queue and removes the ledger row.
+  cancelOutgoing (keyHex, fileName) {
+    keyHex = keyHex.toLowerCase()
+
+    // Remove the matching item from the outbound queue (if any).
+    const q = this._outboundQueue.get(keyHex)
+    if (q) {
+      const filtered = q.filter(item => !(item.fileName === fileName && item.kind === 'request'))
+      if (filtered.length === 0) this._outboundQueue.delete(keyHex)
+      else this._outboundQueue.set(keyHex, filtered)
+    }
+
+    // Remove the ledger row.
+    const list = this._outgoing.get(keyHex)
+    if (list) {
+      const next = list.filter(f => f.fileName !== fileName)
+      if (next.length === 0) this._outgoing.delete(keyHex)
+      else this._outgoing.set(keyHex, next)
+    }
+
+    this._save()
+    emit('ledger-changed')
+    activity.info('friend-storage: cancelled "' + fileName + '"')
+  }
+
   // ── Retrieve flow (Phase C) ───────────────────────────────────────
 
   // Requester: ask the host to send the file back. Returns a Promise that

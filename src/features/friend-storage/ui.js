@@ -162,6 +162,13 @@ function _bindRequestMemory () {
 
   $('fs-req-peer').addEventListener('change', _updateSendBtn)
 
+  // Cancel-button delegation on the active requests list (queued rows only).
+  $('fs-req-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-cancel-key]')
+    if (!btn) return
+    _manager.cancelOutgoing(btn.dataset.cancelKey, btn.dataset.cancelFile)
+  })
+
   // Retrieve-button delegation on the active requests list.
   $('fs-req-list').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-retrieve-key]')
@@ -231,11 +238,15 @@ export function renderActiveRequests (outgoing, friends) {
       const retrieveBtn = f.status === 'hosted'
         ? `<button class="fs-retrieve-btn" data-retrieve-key="${keyHex}" data-retrieve-file="${_esc(f.fileName)}">Retrieve</button>`
         : ''
+      const cancelBtn = f.status === 'queued'
+        ? `<button class="fs-cancel-btn" data-cancel-key="${keyHex}" data-cancel-file="${_esc(f.fileName)}">Cancel</button>`
+        : ''
       li.innerHTML = `
         <span class="fs-file-name">${_esc(f.fileName)}</span>
         <span class="fs-ledger-peer">${_esc(display)}</span>
         <span class="badge badge-${f.status}">${f.status}</span>
         ${retrieveBtn}
+        ${cancelBtn}
       `
       ul.appendChild(li)
     }
@@ -279,39 +290,32 @@ function _renderRequestDropdown (friends, peers) {
 // ── Give Memory ───────────────────────────────────────────────────────────────
 
 function _bindGiveMemory () {
-  const saveBtn = $('fs-give-save-btn')
-  if (!saveBtn) return
-
-  // Populate quota input from stored value
-  const quotaInput = $('fs-give-quota')
-  const storedMB = Math.round(_manager.getQuota() / (1024 * 1024))
-  if (storedMB > 0) quotaInput.value = storedMB
-
-  saveBtn.addEventListener('click', () => {
-    const mb = Number(quotaInput.value) || 0
-    _manager.saveQuota(mb * 1024 * 1024)
-    const msg = $('fs-give-saved-msg')
-    msg.textContent = 'Saved.'
-    setTimeout(() => { msg.textContent = '' }, 1800)
-  })
+  // The Give-Memory page is purely reactive: it only shows requests that
+  // friends have sent. There is no voluntary "offer storage" control.
 
   // Accept/Decline delegation
-  $('fs-give-pending').addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-action]')
-    if (!btn) return
-    const { action, fromKey, fileName } = btn.dataset
-    if (action === 'accept') await _manager.acceptRequest(fromKey, fileName)
-    if (action === 'decline') await _manager.declineRequest(fromKey, fileName)
-    _renderGiveLedger()
-  })
+  const pending = $('fs-give-pending')
+  if (pending) {
+    pending.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-action]')
+      if (!btn) return
+      const { action, fromKey, fileName } = btn.dataset
+      if (action === 'accept') await _manager.acceptRequest(fromKey, fileName)
+      if (action === 'decline') await _manager.declineRequest(fromKey, fileName)
+      _renderGiveLedger()
+    })
+  }
 
   // Evict delegation
-  $('fs-give-hosting').addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-evict-key]')
-    if (!btn) return
-    await _manager.evictFile(btn.dataset.evictKey, btn.dataset.evictFile)
-    _renderGiveLedger()
-  })
+  const hosting = $('fs-give-hosting')
+  if (hosting) {
+    hosting.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-evict-key]')
+      if (!btn) return
+      await _manager.evictFile(btn.dataset.evictKey, btn.dataset.evictFile)
+      _renderGiveLedger()
+    })
+  }
 }
 
 function _renderGiveLedger () {
@@ -353,20 +357,17 @@ function _renderHosting (incoming, friends) {
   const nickMap = {}
   for (const { keyHex, nick } of friends) nickMap[keyHex] = nick
 
-  const quota = _manager.getQuota()
   let any = false
   for (const [keyHex, files] of incoming) {
     for (const f of files) {
       any = true
       const display = nickMap[keyHex] || (keyHex.slice(0, 8) + '…')
-      const pct = quota > 0 ? Math.min(100, Math.round(f.sizeBytes / quota * 100)) : 0
       const li = document.createElement('li')
       li.className = 'fs-ledger-row'
       li.innerHTML = `
         <span class="fs-nick">${_esc(display)}</span>
         <span class="fs-file-name">${_esc(f.fileName)}</span>
         <span class="fs-size">${_fmtBytes(f.sizeBytes)}</span>
-        <div class="storage-bar"><div class="storage-bar-fill" style="width:${pct}%"></div></div>
         <button class="fs-evict-btn"
           data-evict-key="${keyHex}" data-evict-file="${_esc(f.fileName)}">Evict</button>
       `
