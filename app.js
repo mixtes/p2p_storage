@@ -42,6 +42,11 @@ $('myKey').textContent = b4a.toString(localDrive.key, 'hex')
 log('drive ready: ' + b4a.toString(localDrive.key, 'hex').slice(0, 16) + '…')
 
 swarm.on('error', (err) => log('swarm error: ' + err.message))
+swarm.on('update', () => log('swarm update: connections=' + swarm.connections.size + ' peers=' + swarm.peers.size))
+
+setInterval(() => {
+  if (joined) log('swarm status: connections=' + swarm.connections.size + ' peers=' + swarm.peers.size + ' tracked=' + peers.size)
+}, 10000)
 
 swarm.on('connection', (conn, info) => {
   try {
@@ -200,18 +205,19 @@ $('joinBtn').addEventListener('click', async () => {
   if (!code) return alert('Enter a topic')
 
   const topic = crypto.hash(b4a.from('p2p-fileshare:' + code))
+  log('joining topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '… (code="' + code + '")')
   const discovery = swarm.join(topic, { client: true, server: true })
   joined = true
   $('joinBtn').disabled = true
   setStatus('joining…')
 
   await discovery.flushed()
-  log('joined topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '…')
+  log('discovery flushed for topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '…')
 
   // Ensure all pending peer connections are attempted
   await swarm.flush()
   setStatus('listening on topic ' + b4a.toString(topic, 'hex').slice(0, 12), true)
-  log('swarm flushed – ready for peers')
+  log('swarm flushed – ready for peers (connections=' + swarm.connections.size + ' peers=' + swarm.peers.size + ')')
 })
 
 $('sendBtn').addEventListener('click', async () => {
