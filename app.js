@@ -47,11 +47,6 @@ $('myKey').textContent = b4a.toString(localDrive.key, 'hex')
 log('drive ready: ' + b4a.toString(localDrive.key, 'hex').slice(0, 16) + '…')
 
 swarm.on('error', (err) => log('swarm error: ' + err.message))
-swarm.on('update', () => log('swarm update: connections=' + swarm.connections.size + ' peers=' + swarm.peers.size))
-
-setInterval(() => {
-  if (joined) log('swarm status: connections=' + swarm.connections.size + ' peers=' + swarm.peers.size + ' tracked=' + peers.size)
-}, 10000)
 
 swarm.on('connection', (conn, info) => {
   try {
@@ -61,7 +56,6 @@ swarm.on('connection', (conn, info) => {
     // Replicate the corestore — this creates a Protomux on the stream.
     // New cores added to the store later (via onRemoteKey) are synced automatically.
     store.replicate(conn)
-    log('store.replicate attached for ' + peerId)
 
     // Exchange drive keys over a dedicated Protomux channel.
     // Raw conn.write / conn.on('data') won't work after store.replicate
@@ -73,11 +67,7 @@ swarm.on('connection', (conn, info) => {
     const channel = mux.createChannel({
       protocol: 'p2p-fileshare-keys',
       onopen () {
-        log('key channel open, sending key to ' + peerId)
         keyMessage.send(localDrive.key)
-      },
-      onclose () {
-        log('key channel closed: ' + peerId)
       }
     })
 
@@ -94,7 +84,6 @@ swarm.on('connection', (conn, info) => {
     })
 
     channel.open()
-    log('key channel opened (local) for ' + peerId)
 
     conn.on('error', (err) => log('conn error (' + peerId + '): ' + err.message))
     conn.on('close', () => {
@@ -108,14 +97,11 @@ swarm.on('connection', (conn, info) => {
 
 async function onRemoteKey (key, connPeerId) {
   const hex = b4a.toString(key, 'hex')
-  if (peers.has(hex)) {
-    log('onRemoteKey: already known ' + hex.slice(0, 16) + '…')
-    return
-  }
+  if (peers.has(hex)) return
 
   const drive = new Hyperdrive(store, key)
   await drive.ready()
-  log('remote drive ready: ' + hex.slice(0, 16) + '… (version=' + drive.version + ')')
+  log('remote drive ready: ' + hex.slice(0, 16) + '… (v' + drive.version + ')')
 
   // Eagerly prefetch the entire drive in the background so blocks are
   // already cached locally by the time MirrorDrive asks for them.
@@ -130,12 +116,7 @@ async function onRemoteKey (key, connPeerId) {
   peers.set(hex, peer)
   renderPeers()
 
-  if (receiveFolder) {
-    log('receiveFolder already set, starting receive for ' + hex.slice(0, 16) + '…')
-    startReceiving(peer)
-  } else {
-    log('receiveFolder not set yet; waiting for user to press start receiving')
-  }
+  if (receiveFolder) startReceiving(peer)
 }
 
 function removePeerByConn (connPeerId) {
@@ -169,46 +150,36 @@ function renderPeers () {
 // --- Send: local folder -> our Hyperdrive --------------------------------
 async function pushSendFolder() {
   if (!sendFolder) return
-  log('pushSendFolder: opening localdrive at ' + sendFolder)
   const local = new Localdrive(sendFolder)
   const mirror = new MirrorDrive(local, localDrive)
   await mirror.done()
-  log(`pushed ${sendFolder} -> drive (${mirror.count.add} added, ${mirror.count.change} changed, ${mirror.count.remove} removed)`)
-  log('localDrive version after push: ' + localDrive.version)
+  log(`pushed ${sendFolder} -> drive v${localDrive.version} (+${mirror.count.add} ~${mirror.count.change} -${mirror.count.remove})`)
 }
 
 // --- Receive: a peer's Hyperdrive -> local folder, with live updates -----
 async function startReceiving(peer) {
-  if (peer.watcher) {
-    log('startReceiving: already watching this peer')
-    return
-  }
+  if (peer.watcher) return
   const peerHex = b4a.toString(peer.drive.key, 'hex').slice(0, 16)
-  log('startReceiving: peer=' + peerHex + '… version=' + peer.drive.version + ' -> ' + receiveFolder)
   const local = new Localdrive(receiveFolder)
 
   const sync = async () => {
-    log('sync: starting (peer drive version=' + peer.drive.version + ')')
     const mirror = new MirrorDrive(peer.drive, local)
     await mirror.done()
-    log(`sync: done (${mirror.count.add} added, ${mirror.count.change} changed, ${mirror.count.remove} removed)`)
+    log(`synced ${peerHex}… v${peer.drive.version} -> ${receiveFolder} (+${mirror.count.add} ~${mirror.count.change} -${mirror.count.remove})`)
   }
 
   try {
     await sync()
   } catch (err) {
-    log('initial sync error: ' + err.message)
+    log('sync error: ' + err.message)
   }
 
   // Hyperdrive.watch() yields whenever the remote drive's tree changes.
-  log('starting watcher on peer ' + peerHex + '…')
   peer.watcher = peer.drive.watch('/')
   ;(async () => {
     for await (const _ of peer.watcher) {
-      log('watcher: change detected on peer ' + peerHex + '… new version=' + peer.drive.version)
       try { await sync() } catch (err) { log('sync error: ' + err.message) }
     }
-    log('watcher: ended for peer ' + peerHex + '…')
   })().catch((err) => log('watcher error: ' + err.message))
 }
 
