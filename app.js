@@ -4,31 +4,28 @@ import Hyperdrive from 'hyperdrive'
 import Hyperswarm from 'hyperswarm'
 import Localdrive from 'localdrive'
 import MirrorDrive from 'mirror-drive'
+import Protomux from 'protomux'
+import c from 'compact-encoding'
 import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 
 const { teardown, config } = Pear
 
-// --- Corestore + our writable Hyperdrive ----------------------------------
-// Corestore lives in Pear's per-app storage so the same drive key persists
-// across restarts. namespace('local') keeps room for future drives.
 const store = new Corestore(config.storage)
 await store.ready()
 
 const localDrive = new Hyperdrive(store.namespace('local'))
 await localDrive.ready()
 
-// --- Hyperswarm (peer discovery + transport) ------------------------------
 const swarm = new Hyperswarm()
 teardown(() => swarm.destroy())
 
-// State
-const peers = new Map()        // remoteKey hex -> { drive, watcher }
+// remoteKeyHex -> { drive, watcher, connPeerId }
+const peers = new Map()
 let receiveFolder = null
 let sendFolder = null
 let joined = false
 
-// --- DOM helpers ----------------------------------------------------------
 const $ = (id) => document.getElementById(id)
 const log = (msg) => {
   const el = $('log')
@@ -44,43 +41,65 @@ const setStatus = (text, on) => {
 $('myKey').textContent = b4a.toString(localDrive.key, 'hex')
 log('drive ready: ' + b4a.toString(localDrive.key, 'hex').slice(0, 16) + '…')
 
-// --- Wire each new connection --------------------------------------------
+swarm.on('error', (err) => log('swarm error: ' + err.message))
+
 swarm.on('connection', (conn, info) => {
-  const peerId = b4a.toString(info.publicKey, 'hex').slice(0, 12)
-  log('peer connected: ' + peerId)
+  try {
+    const peerId = b4a.toString(conn.remotePublicKey, 'hex').slice(0, 12)
+    log('peer connected: ' + peerId)
 
-  // Replicate the corestore over this socket. Once we know each other's
-  // drive keys, both sides can read each other's drives through this stream.
-  store.replicate(conn)
+    // Replicate the corestore — this creates a Protomux on the stream.
+    // New cores added to the store later (via onRemoteKey) are synced automatically.
+    store.replicate(conn)
 
-  // Send our drive key first thing.
-  conn.write(localDrive.key)
+    // Exchange drive keys over a dedicated Protomux channel.
+    // Raw conn.write / conn.on('data') won't work after store.replicate
+    // because Protomux owns the stream.
+    const mux = Protomux.from(conn)
 
-  // Read the first 32 bytes from the peer = their drive key.
-  let buf = b4a.alloc(0)
-  let gotKey = false
-  conn.on('data', (data) => {
-    if (gotKey) return
-    buf = b4a.concat([buf, data])
-    if (buf.length >= 32) {
-      gotKey = true
-      onRemoteKey(buf.subarray(0, 32)).catch((err) =>
-        log('peer setup error: ' + err.message)
-      )
-    }
-  })
-  conn.on('error', (err) => log('conn error: ' + err.message))
-  conn.on('close', () => log('peer disconnected: ' + peerId))
+    let keyMessage = null
+
+    const channel = mux.createChannel({
+      protocol: 'p2p-fileshare-keys',
+      onopen () {
+        keyMessage.send(localDrive.key)
+      },
+      onclose () {
+        log('key channel closed: ' + peerId)
+      }
+    })
+
+    keyMessage = channel.addMessage({
+      encoding: c.raw,
+      async onmessage (remoteKey) {
+        try {
+          await onRemoteKey(remoteKey, peerId)
+        } catch (err) {
+          log('peer setup error: ' + err.message)
+        }
+      }
+    })
+
+    channel.open()
+
+    conn.on('error', (err) => log('conn error (' + peerId + '): ' + err.message))
+    conn.on('close', () => {
+      log('peer disconnected: ' + peerId)
+      removePeerByConn(peerId)
+    })
+  } catch (err) {
+    log('connection handler error: ' + err.message)
+  }
 })
 
-async function onRemoteKey(key) {
+async function onRemoteKey (key, connPeerId) {
   const hex = b4a.toString(key, 'hex')
   if (peers.has(hex)) return
 
   const drive = new Hyperdrive(store, key)
   await drive.ready()
 
-  const peer = { drive, watcher: null }
+  const peer = { drive, watcher: null, connPeerId }
   peers.set(hex, peer)
   log('remote drive: ' + hex.slice(0, 16) + '…')
   renderPeers()
@@ -88,7 +107,18 @@ async function onRemoteKey(key) {
   if (receiveFolder) startReceiving(peer)
 }
 
-function renderPeers() {
+function removePeerByConn (connPeerId) {
+  for (const [hex, peer] of peers) {
+    if (peer.connPeerId === connPeerId) {
+      if (peer.watcher) peer.watcher.destroy()
+      peers.delete(hex)
+      break
+    }
+  }
+  renderPeers()
+}
+
+function renderPeers () {
   const el = $('peers')
   el.innerHTML = ''
   if (peers.size === 0) {
@@ -149,9 +179,14 @@ $('joinBtn').addEventListener('click', async () => {
   joined = true
   $('joinBtn').disabled = true
   setStatus('joining…')
+
   await discovery.flushed()
-  setStatus('listening on topic ' + b4a.toString(topic, 'hex').slice(0, 12), true)
   log('joined topic ' + b4a.toString(topic, 'hex').slice(0, 16) + '…')
+
+  // Ensure all pending peer connections are attempted
+  await swarm.flush()
+  setStatus('listening on topic ' + b4a.toString(topic, 'hex').slice(0, 12), true)
+  log('swarm flushed – ready for peers')
 })
 
 $('sendBtn').addEventListener('click', async () => {
