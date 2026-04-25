@@ -12,7 +12,8 @@
       "main": "index.html",
       "backgroundColor": "#1F2430",
       "height": 680,
-      "width": 920
+      "width": 920,
+      "frame": false
     }
   },
   "scripts": {

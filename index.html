@@ -6,13 +6,17 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <header class="titlebar">
+    <header class="titlebar" id="titlebar">
       <h1>P2P FileShare</h1>
       <div class="status">
         <span class="dot" id="statusDot"></span>
         <span id="statusText">idle</span>
       </div>
     </header>
+    <script type="module">
+      import { mountWindowControls } from './window-controls.js'
+      mountWindowControls(document.getElementById('titlebar'))
+    </script>
 
     <main>
       <section class="card">
