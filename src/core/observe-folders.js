@@ -2,12 +2,13 @@
 /**
  * Observable folders.
  *
- * Mirrors replication events to three on-disk folders so the user can
+ * Mirrors replication events to on-disk folders so the user can
  * verify communication is working without inspecting Hyperbee state:
  *
  *   agreements/        one JSON file per active agreement (both sides)
- *   stashed_files/     encrypted chunks I'm holding for other peers (keeper)
- *   retrieved_files/   files I've pulled back from keepers (owner)
+ *   stashed_files/     encrypted chunks I'm holding for other peers (replication keeper)
+ *   retrieved_files/   files I've pulled back from keepers (replication owner)
+ *   rent_files/        encrypted chunks I'm hosting for friends (friend-storage host)
  *
  * Uses Localdrive (already a project dependency) so the writes work in
  * the Electron renderer — bare-fs is unavailable here because it needs
@@ -23,10 +24,11 @@ const projectDir = resolveProjectDir()
 const agreementsDrive = projectDir ? new Localdrive(projectDir + '/agreements') : null
 const stashedDrive = projectDir ? new Localdrive(projectDir + '/stashed_files') : null
 const retrievedDrive = projectDir ? new Localdrive(projectDir + '/retrieved_files') : null
+const rentDrive = projectDir ? new Localdrive(projectDir + '/rent_files') : null
 
 if (!projectDir) {
   const link = Pear?.app?.applink ?? Pear?.config?.applink ?? '<none>'
-  dev.warn('[observe] project dir not resolved (applink=' + link + ') — agreements/stashed_files/retrieved_files will not be written')
+  dev.warn('[observe] project dir not resolved (applink=' + link + ') — observable folders will not be written')
 } else {
   dev.info('[observe] writing observable folders under ' + projectDir)
 }
@@ -97,6 +99,27 @@ export async function stashIncomingFile (filename, data, meta = {}) {
     }
   } catch (err) {
     dev.error('[observe] stashIncomingFile failed:', err.message)
+  }
+}
+
+/**
+ * Save an encrypted chunk received from a friend (friend-storage host side)
+ * to rent_files/. One .enc file per chunk + a .json sidecar with metadata.
+ */
+export async function recordRentFile (fileId, chunkIndex, data, meta = {}) {
+  if (!rentDrive) return
+  try {
+    const base = safeName(fileId.slice(0, 16)) + '_' + chunkIndex
+    await rentDrive.put('/' + base + '.enc', b4a.from(data))
+    await rentDrive.put('/' + base + '.json', jsonBuf({
+      ...meta,
+      fileId,
+      chunkIndex,
+      receivedAt: new Date().toISOString(),
+      size: data.length
+    }))
+  } catch (err) {
+    dev.error('[observe] recordRentFile failed:', err.message)
   }
 }
 

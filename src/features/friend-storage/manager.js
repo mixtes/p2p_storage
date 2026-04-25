@@ -11,6 +11,7 @@ import {
 import {
   getConnectedPeers, setFriendStorageHandlers
 } from '../replication/manager.js'
+import { recordRentFile } from '../../core/observe-folders.js'
 
 const ackBuffer = new Map()       // `${fileId}:${chunkIndex}` -> true
 const retrievalBuffer = new Map() // `${fileId}:${chunkIndex}` -> Buffer
@@ -170,6 +171,13 @@ async function handleIncomingChunk ({ fileId, chunkIndex, chunkCount, totalSize,
     await manifest.put('fs-hosted:' + (ownerKey || peerId) + ':' + fileId + ':' + chunkIndex, {
       size: buf.length,
       storedAt: Date.now()
+    })
+
+    await recordRentFile(fileId, chunkIndex, buf, {
+      fromPeer: peerId,
+      ownerKey: ownerKey || peerId,
+      chunkCount,
+      totalSize
     })
 
     const rpc = getConnectedPeers().get(peerId)
