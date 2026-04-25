@@ -5,19 +5,57 @@
  * stores redundant copies on other peers' machines, while providing
  * local disk space for others to do the same.
  *
- * Entry point -- wires manager, sync, and UI together.
+ * Entry point — wires manager, protocol, health monitor, and UI.
  */
 
-import { ReplicationManager } from './manager.js'
+import * as manager from './manager.js'
 import * as ui from './ui.js'
+import { on as onNetwork, setReplicationHandlers } from '../../core/network.js'
+import * as healthMonitor from '../../core/health-monitor.js'
+import { activity, dev } from '../../core/logger.js'
 
-let manager = null
+export async function init () {
+  await manager.init()
 
-export function init () {
-  manager = new ReplicationManager()
+  const handlers = manager.createProtocolHandlers()
+  setReplicationHandlers(handlers)
+
+  onNetwork('replicationPeer', (peerId, rpc) => {
+    manager.registerPeer(peerId, rpc)
+    dev.info('[replication] peer registered: ' + peerId)
+  })
+
+  onNetwork('replicationPeerRemove', (peerId) => {
+    manager.unregisterPeer(peerId)
+    dev.info('[replication] peer unregistered: ' + peerId)
+  })
+
+  if (manager.isConfigured()) {
+    startHealthMonitor()
+  }
+
+  manager.on('configChanged', () => {
+    if (!healthMonitor.isRunning()) startHealthMonitor()
+  })
+
+  healthMonitor.on('degraded', (peerId) => {
+    activity.info('keeper degraded — consider re-replication: ' + peerId)
+  })
+
+  healthMonitor.on('recovered', (peerId) => {
+    activity.info('keeper recovered: ' + peerId)
+  })
+
   ui.init()
 }
 
-export function getManager () {
-  return manager
+function startHealthMonitor () {
+  const config = manager.getConfig()
+  healthMonitor.start({
+    getConnectedPeers: () => manager.getConnectedPeers(),
+    getKeeperUsedBytes: () => manager.getKeeperUsedBytesAsync(),
+    getOfferedBytes: () => config ? config.offeredBytes : 0
+  })
 }
+
+export { manager, healthMonitor }

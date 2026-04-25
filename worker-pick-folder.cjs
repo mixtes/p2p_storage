@@ -50,7 +50,7 @@ try {
   pipe = require('pear-pipe')()
 } catch (err) {
   // last-resort: print to stderr so something shows up
-  console.error('worker: pear-pipe failed: ' + err.message)
+  console.error('[worker:folder] worker: pear-pipe failed: ' + err.message)
   process.exit(1)
 }
 

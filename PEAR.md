@@ -374,45 +374,15 @@ Curated from [gasolin/awesome-pears](https://github.com/gasolin/awesome-pears) a
 Single sink — the in-app `<div id="log">` panel — defined in [src/core/logger.js](src/core/logger.js):
 
 - **`activity.{info,warn,error}(msg)`** — always shown. User-facing.
-- **`dev.{info,warn,error,debug}(...args)`** — shown only when `devLogs: true` in [config.json](config.json). Lines tagged `[dev <level>]` and styled muted/italic.
-- **`log(msg)`** — back-compat shim; equivalent to `activity.info`.
+- **`dev.{info,warn,error,debug}(...args)`** — shown only when `devLogs: true` in [config.json](config.json). Otherwise no-op. Lines are tagged `[dev <level>]` and styled muted/italic so they're easy to skim past.
 
-Why a single sink: pear-electron does not forward renderer `console.*` to the spawning terminal (only the host entry [index.js](index.js) reaches it). Routing through the panel guarantees logs are visible in production runs without DevTools.
-
-## Friend-storage feature
-
-A peer-to-peer "park-files-with-a-friend" feature implemented under [src/features/friend-storage](src/features/friend-storage). Roles: **requester** asks a **host** to keep a file; the requester can later **fetch** it back.
-
-**On-disk layout** ([disk-store.js](src/features/friend-storage/disk-store.js)):
-
-```
-<Pear.config.storage>/friend-storage/<requesterHex>/<fileName>
+Toggle developer logs by editing [config.json](config.json):
+```json
+{ "devLogs": true }
 ```
 
-A single `Localdrive` is rooted at `<storage>/friend-storage/`. Filenames are sanitised before write (no `/`, `\`, leading dots) so peers cannot traverse out of their own subdirectory. Plain bytes for now; AEAD wrapping will be added at the `putFile`/`getFile` boundary when encryption lands.
+Why everything goes to the activity panel: `pear-electron` does not forward renderer `console.*` to the spawning terminal (only the host entry [index.js](index.js) reaches it, and only DevTools shows renderer console output otherwise). Routing through the panel guarantees logs are visible in production runs without DevTools.
 
-**Wire protocol** — single Protomux channel `'p2p-friend-storage'` ([sync.js](src/features/friend-storage/sync.js)) carrying eight messages:
-
-| # | Name        | Encoding                        | Direction              | Purpose |
-|---|-------------|---------------------------------|------------------------|---------|
-| 0 | REQUEST     | `{ fileName, data: buffer }`    | requester → host       | "store this for me" |
-| 1 | ACCEPT      | `string`                        | host → requester       | accepted; persisted |
-| 2 | DECLINE     | `string`                        | host → requester       | refused |
-| 3 | FETCH       | `string`                        | requester → host       | "give it back" |
-| 4 | FETCH_DATA  | `{ fileName, data: buffer }`    | host → requester       | here it is |
-| 5 | FETCH_ERR   | `{ fileName, reason: string }`  | host → requester       | not found / IO error |
-| 6 | PING        | `uint`                          | either                 | keep-alive probe |
-| 7 | PONG        | `uint`                          | either                 | keep-alive reply |
-
-**Channel lifecycle.** The channel is registered with the manager only inside `channel.onopen` so the manager never holds a reference to a half-open channel. [index.js](src/features/friend-storage/index.js) walks `network.getPeers()` on init to cover peers that connected before friend-storage initialised.
-
-**Outbound queue.** Requests issued while a friend is offline are buffered in `manager._outboundQueue` and flushed on the next `registerChannel`. The corresponding ledger entry is shown as `queued` (badge color: lavender).
-
-**Keep-alive.** PING is sent every 15 s per friend; `livenessFor(hex)` returns `live` (last pong < 30 s) / `stale` (< 90 s) / `offline` (no channel). Friend-list dot color reflects this.
-
-**Persistence.**
-- Friends list, quota, outgoing & incoming ledgers → `localStorage` (`fs-friends`, `fs-quota`, `fs-outgoing`, `fs-incoming`).
-- Hosted file bytes → on-disk via `disk-store`.
-- On restart, any `pending` outgoing rows are demoted to `queued` (no ack across the restart boundary).
-
-**Out of scope (separate plans):** AEAD encryption, quota enforcement, multi-chunk streaming for very large files.
+Rules:
+- Never call `console.*` directly from `src/**` or [window-controls.js](window-controls.js). Use `dev.*`.
+- The CJS Bare worker ([worker-pick-folder.cjs](worker-pick-folder.cjs)) has no DOM and does not import the renderer logger; it uses `console.error('[worker:folder] …')`, which IS visible in the parent terminal because workers are spawned via `pear-run` and their pipe carries stderr.

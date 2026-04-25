@@ -1,9 +1,7 @@
 /* global Pear */
 
-import * as electron from 'pear-electron'
+import ui from 'pear-electron'
 import { dev } from './src/core/logger.js'
-
-const ui = electron.default ?? electron
 
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 

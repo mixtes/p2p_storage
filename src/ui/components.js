@@ -20,5 +20,36 @@ export function renderPeers (peers) {
 
 export function displayDriveKey (keyHex) {
   const el = $('myKey')
-  if (el) el.textContent = keyHex
+  if (!el) return
+  // Refuse to clobber the placeholder with an empty string — that hides the
+  // "not ready yet" state and silently looks like a bug to the user.
+  if (!keyHex) return
+  el.textContent = keyHex
+}
+
+export function displayPublicKey (keyHex) {
+  const el = $('myPublicKey')
+  if (!el) return
+  if (!keyHex) return
+  el.textContent = keyHex
+}
+
+export function showRecoverySeed (seedHex) {
+  const card = $('recovery-card')
+  const seedEl = $('recoverySeed')
+  const revealBtn = $('revealSeedBtn')
+  const dismissBtn = $('dismissRecoveryBtn')
+  if (!card || !seedEl) return
+
+  seedEl.textContent = seedHex
+  card.hidden = false
+
+  revealBtn.addEventListener('click', () => {
+    const isBlurred = seedEl.classList.toggle('blurred')
+    revealBtn.textContent = isBlurred ? 'Reveal' : 'Hide'
+  })
+
+  dismissBtn.addEventListener('click', () => {
+    card.hidden = true
+  })
 }

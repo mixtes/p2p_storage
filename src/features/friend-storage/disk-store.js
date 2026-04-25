@@ -2,7 +2,7 @@
 /**
  * Friend-storage on-disk store.
  *
- * Layout: <Pear.config.storage>/friend-storage/<requesterHex>/<fileName>
+ * Layout: <Pear.app.storage>/friend-storage/<requesterHex>/<fileName>
  *
  * One Localdrive instance is rooted at the friend-storage directory and each
  * requester's parked files live in a subdirectory named after their drive key.
@@ -16,10 +16,12 @@ import b4a from 'b4a'
 let drive = null
 
 function rootPath () {
-  // Pear.config.storage is the absolute storage path Pear assigns to the app.
-  // Strip a trailing separator and append our subfolder; Localdrive normalises
-  // the rest, so a forward slash works on Windows too.
-  const base = String(Pear.config.storage || '.').replace(/[/\\]+$/, '')
+  // Pear.app.storage is the absolute storage path Pear assigns to the app
+  // (Pear.config is the deprecated alias kept for older runtimes). Strip a
+  // trailing separator and append our subfolder; Localdrive normalises the
+  // rest, so a forward slash works on Windows too.
+  const raw = Pear?.app?.storage ?? Pear?.config?.storage ?? '.'
+  const base = String(raw).replace(/[/\\]+$/, '')
   return base + '/friend-storage'
 }
 

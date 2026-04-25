@@ -1,7 +1,9 @@
+/* global Pear */
 import * as store from './core/store.js'
+import * as identity from './core/identity.js'
 import * as network from './core/network.js'
-import { activity, log } from './core/logger.js'
-import { renderPeers, displayDriveKey } from './ui/components.js'
+import { activity, dev } from './core/logger.js'
+import { renderPeers, displayDriveKey, displayPublicKey, showRecoverySeed } from './ui/components.js'
 import * as router from './ui/router.js'
 import * as fileSharing from './features/file-sharing/index.js'
 import * as replication from './features/replication/index.js'
@@ -20,10 +22,32 @@ window.addEventListener('unhandledrejection', (e) => {
 try {
   await store.init()
   const keyHex = store.getLocalKeyHex()
-  log('drive ready: ' + keyHex.slice(0, 16) + '…')
+  dev.debug('[app] getLocalKeyHex length=' + keyHex.length + ' first16=' + keyHex.slice(0, 16))
+  if (!keyHex) {
+    throw new Error('drive key is empty after store.init()')
+  }
+  activity.info('drive ready: ' + keyHex.slice(0, 16) + '…')
   displayDriveKey(keyHex)
 } catch (err) {
   activity.error('store init failed: ' + (err?.message || err))
+  throw err
+}
+
+try {
+  const { publicKey, isNew } = await identity.init(store.getStore())
+  const pkHex = identity.getPublicKeyHex()
+  dev.debug('[app] identity ready: pk=' + (pkHex ? pkHex.slice(0, 16) + '…' : '(null)') + ' isNew=' + isNew)
+  if (!pkHex) {
+    throw new Error('public key is empty after identity.init()')
+  }
+  activity.info((isNew ? 'identity created: ' : 'identity loaded: ') + pkHex.slice(0, 16) + '…')
+  displayPublicKey(pkHex)
+  if (isNew) {
+    const seedHex = identity.getRecoverySeedHex()
+    if (seedHex) showRecoverySeed(seedHex)
+  }
+} catch (err) {
+  activity.error('identity init failed: ' + (err?.message || err))
   throw err
 }
 

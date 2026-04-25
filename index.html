@@ -34,11 +34,30 @@
         <code id="myKey">&hellip;</code>
       </div>
       <div class="kv">
+        <span>my public key</span>
+        <code id="myPublicKey">&hellip;</code>
+      </div>
+      <div class="kv">
         <span>connected peers</span>
         <ul id="peers" class="peers">
           <li class="empty">none yet</li>
         </ul>
       </div>
+    </section>
+
+    <!-- Recovery key banner (shown once on first run) -->
+    <section class="card recovery-card" id="recovery-card" hidden>
+      <h2>Recovery Key</h2>
+      <p class="hint recovery-warning">
+        This is your <strong>secret recovery key</strong>. It is the only way to
+        restore your identity on another device. Save it somewhere safe &mdash;
+        it will not be shown again. <em>Anyone with this key can impersonate you.</em>
+      </p>
+      <div class="recovery-seed-row">
+        <code id="recoverySeed" class="recovery-seed blurred">&hellip;</code>
+        <button id="revealSeedBtn" class="btn-small">Reveal</button>
+      </div>
+      <button id="dismissRecoveryBtn" class="btn-outline">I&rsquo;ve saved my recovery key</button>
     </section>
 
     <!-- Feature tabs -->
@@ -85,17 +104,126 @@
         </section>
       </div>
 
-      <!-- Feature 2: Storage Replication (stub) -->
+      <!-- Feature 2: Storage Replication -->
       <div id="view-replication" class="feature-view hidden">
-        <section class="card">
-          <h2>Storage Replication</h2>
+
+        <!-- Configuration -->
+        <section class="card" id="repl-config-card">
+          <h2>Replication Setup</h2>
           <p class="hint">
-            Symmetric encrypted backup. You store encrypted copies of a peer's
-            important files, and they store yours. Both sides reserve disk space
-            for the other.
+            Choose how many copies (N) of your data to keep across the network.
+            You must offer N&times; your data size as storage for other peers.
           </p>
-          <p class="placeholder">Coming soon &mdash; not yet implemented.</p>
+
+          <div id="repl-config-form">
+            <div class="row" style="margin-bottom:8px">
+              <div class="repl-field">
+                <label for="replFactor">Copies (N)</label>
+                <input id="replFactor" type="number" min="1" max="10" value="2"
+                       style="width:70px;flex:none" />
+              </div>
+              <div class="repl-field">
+                <label for="replOffer">Space to offer (MB)</label>
+                <input id="replOffer" type="number" min="1" value="512"
+                       style="width:100px;flex:none" />
+              </div>
+              <button id="replConfigBtn">Apply</button>
+            </div>
+          </div>
+
+          <div id="repl-config-status" class="kv" hidden>
+            <span>status</span>
+            <code id="replConfigLabel">&hellip;</code>
+          </div>
         </section>
+
+        <!-- Health overview -->
+        <section class="card" id="repl-health-card">
+          <h2>Replication Health</h2>
+
+          <div class="repl-health-row">
+            <div class="health-stat">
+              <span class="health-dot health-green" id="healthOnlineDot"></span>
+              <span id="healthOnline">0</span> online
+            </div>
+            <div class="health-stat">
+              <span class="health-dot health-yellow" id="healthDegradedDot"></span>
+              <span id="healthDegraded">0</span> degraded
+            </div>
+            <div class="health-stat">
+              <span class="health-dot health-red" id="healthOfflineDot"></span>
+              <span id="healthOffline">0</span> offline
+            </div>
+          </div>
+
+          <div id="repl-file-health"></div>
+        </section>
+
+        <!-- Replicate a file -->
+        <section class="card">
+          <h2>Replicate a File</h2>
+          <p class="hint">
+            Pick a file to encrypt, chunk, and distribute across your keepers.
+            Only you can decrypt it &mdash; keepers only see opaque encrypted blocks.
+          </p>
+          <div class="row">
+            <button id="replPickBtn" type="button">Choose file&hellip;</button>
+            <button id="replSendBtn" disabled>Replicate</button>
+          </div>
+          <div class="kv">
+            <span>file to replicate</span>
+            <code id="replFileLabel">(none selected)</code>
+          </div>
+          <input id="replFileInput" type="file" hidden />
+        </section>
+
+        <!-- Retrieve a file -->
+        <section class="card">
+          <h2>Retrieve Replicated File</h2>
+          <p class="hint">
+            Select a previously replicated file to download from keepers,
+            decrypt, and reassemble locally.
+          </p>
+          <div class="row">
+            <select id="replRetrieveSelect">
+              <option value="">-- select a file --</option>
+            </select>
+            <button id="replRetrieveBtn" disabled>Retrieve</button>
+          </div>
+        </section>
+
+        <!-- Agreements & keeper stats -->
+        <section class="card">
+          <h2>Agreements</h2>
+          <p class="hint">
+            Peers you have active storage agreements with. Each keeper holds
+            a portion of your encrypted chunks.
+          </p>
+          <div class="row" style="margin-bottom:8px">
+            <button id="replRequestBtn" disabled>Request Agreements</button>
+          </div>
+          <div id="repl-agreements" class="repl-agreements">
+            <div class="placeholder">No agreements yet</div>
+          </div>
+        </section>
+
+        <!-- What I'm hosting for others -->
+        <section class="card">
+          <h2>Hosted for Others</h2>
+          <p class="hint">
+            Encrypted chunks you are storing for other peers. You cannot
+            read this data &mdash; it is encrypted with the owner&rsquo;s key.
+          </p>
+          <div id="repl-hosted-stats" class="kv">
+            <span>hosted chunks</span>
+            <code id="replHostedCount">0</code>
+          </div>
+          <div class="kv">
+            <span>space used</span>
+            <code id="replHostedBytes">0 B</code>
+          </div>
+        </section>
+
       </div>
 
       <!-- Feature 3: Friend Storage -->
