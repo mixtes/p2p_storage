@@ -62,46 +62,6 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .wc-win .wc-btn:hover { background: #353c52; }
 .wc-win .wc-close:hover { background: #e81123; color: #fff; }
 
-/* Window controls (frameless window: close / minimize / maximize) */
-.window-controls { display: flex; align-items: center; -webkit-app-region: no-drag;}
-.window-controls .wc-btn {
-  background: transparent; border: 0; padding: 0; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-
-.wc-mac { gap: 8px; margin-right: 12px; }
-.wc-mac:hover .wc-btn::before { opacity: 1; }
-.wc-mac .wc-btn {
-  width: 12px; height: 12px; border-radius: 50%;
-  border: 1px solid rgba(0,0,0,0.25);
-  position: relative;
-}
-.wc-mac .wc-btn::before {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; line-height: 1;
-  color: rgba(0,0,0,0.65);
-  opacity: 0; transition: opacity .12s ease;
-  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-}
-.wc-mac .wc-close { background: #ff5f57; }
-.wc-mac .wc-min   { background: #febc2e; }
-.wc-mac .wc-zoom  { background: #28c840; }
-.wc-mac .wc-close::before { content: "\2715"; }
-.wc-mac .wc-min::before   { content: "\2212"; }
-.wc-mac .wc-zoom::before  { content: "\002B"; }
-
-.wc-win { gap: 0; margin-left: 12px; }
-.wc-win .wc-btn {
-  width: 38px; height: 26px; color: #c4d0ff; font-size: 12px;
-  border-radius: 4px;
-}
-.wc-win .wc-min::before  { content: "\2014"; }
-.wc-win .wc-max::before  { content: "\25A1"; }
-.wc-win .wc-close::before { content: "\2715"; }
-.wc-win .wc-btn:hover { background: #353c52; }
-.wc-win .wc-close:hover { background: #e81123; color: #fff; }
-
 /* Network card + log card sit outside <main>, need own padding */
 #network-card,
 #log-card {
