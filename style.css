@@ -23,7 +23,49 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .dot.on { background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18); }
 
-main { padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 14px; }
+/* Network card + log card sit outside <main>, need own padding */
+#network-card,
+#log-card {
+  margin: 16px 20px 0;
+}
+
+/* Tab bar */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 14px 20px 0;
+}
+.tab-btn {
+  background: transparent;
+  color: #8a93a6;
+  border: 1px solid #2f3648;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.tab-btn:hover { color: #c4d0ff; background: #262c3a; }
+.tab-btn.active {
+  background: #262c3a;
+  color: #E6E6E6;
+  border-color: #5b8def;
+  border-bottom: 1px solid #262c3a;
+}
+
+main {
+  padding: 0 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid #2f3648;
+  margin-top: -1px;
+}
+
 .card {
   background: #262c3a;
   border: 1px solid #2f3648;
@@ -70,3 +112,15 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
 }
 .log div { white-space: pre-wrap; word-break: break-word; }
 .log div + div { border-top: 1px dashed #2c3344; padding-top: 4px; margin-top: 4px; }
+
+/* Feature views */
+.feature-view { padding-top: 14px; }
+.feature-view.hidden { display: none; }
+
+.placeholder {
+  color: #6b7388;
+  font-style: italic;
+  font-size: 13px;
+  padding: 20px 0;
+  text-align: center;
+}
