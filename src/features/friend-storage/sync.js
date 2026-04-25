@@ -15,6 +15,7 @@
 
 import c from 'compact-encoding'
 import { activity, dev } from '../../core/logger.js'
+import { scheduleAutoReopen, resetAutoAttempts } from './index.js'
 
 // { fileName, data } → [string][buffer]
 const fileEncoding = {
@@ -78,11 +79,17 @@ export function setupChannel (peer, hex, manager) {
     protocol: 'p2p-friend-storage',
     onopen () {
       activity.info('friend-storage: channel ready with ' + hex.slice(0, 12) + '…')
+      resetAutoAttempts(hex)
       manager.registerChannel(hex, api)
     },
     onclose () {
       activity.warn('friend-storage: channel closed with ' + hex.slice(0, 12) + '…')
       manager.unregisterChannel(hex)
+      // If the underlying swarm peer is still alive, try to re-open the
+      // friend-storage channel with exponential backoff. scheduleAutoReopen
+      // bails out after a fixed number of attempts to prevent an open/close
+      // hot loop when the remote keeps rejecting the channel.
+      try { scheduleAutoReopen(hex) } catch (err) { dev.error('[fs] schedule auto-reopen failed:', err) }
     }
   })
 
@@ -133,6 +140,11 @@ export function setupChannel (peer, hex, manager) {
     onmessage (ts) { manager._onPong(hex, ts) }
   })
 
+  const msgCancel = channel.addMessage({
+    encoding: c.string,
+    onmessage (fileName) { manager._onIncomingCancel(hex, fileName) }
+  })
+
   api = {
     sendRequest   (fileName, data)   { msgRequest.send({ fileName, data }) },
     sendAccept    (fileName)         { msgAccept.send(fileName) },
@@ -141,7 +153,8 @@ export function setupChannel (peer, hex, manager) {
     sendFetchData (fileName, data)   { msgFetchData.send({ fileName, data }) },
     sendFetchErr  (fileName, reason) { msgFetchErr.send({ fileName, reason }) },
     sendPing      (ts = Date.now())  { msgPing.send(ts) },
-    sendPong      (ts)               { msgPong.send(ts) }
+    sendPong      (ts)               { msgPong.send(ts) },
+    sendCancel    (fileName)         { msgCancel.send(fileName) }
   }
 
   channel.open()

@@ -20,5 +20,3 @@ async function shutdown (code = 0) {
 pipe.on('close', () => shutdown(Pear.exitCode ?? 0))
 pipe.on('end', () => shutdown(Pear.exitCode ?? 0))
 pipe.on('error', () => shutdown(Pear.exitCode ?? 0))
-
-Pear.teardown(() => shutdown(Pear.exitCode ?? 0))

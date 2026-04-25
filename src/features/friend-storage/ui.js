@@ -249,7 +249,7 @@ export function renderActiveRequests (outgoing, friends) {
       const retrieveBtn = f.status === 'hosted'
         ? `<button class="fs-retrieve-btn" data-retrieve-key="${keyHex}" data-retrieve-file="${_esc(f.fileName)}">Retrieve</button>`
         : ''
-      const cancelBtn = f.status === 'queued'
+      const cancelBtn = (f.status === 'queued' || f.status === 'pending')
         ? `<button class="fs-cancel-btn" data-cancel-key="${keyHex}" data-cancel-file="${_esc(f.fileName)}">Cancel</button>`
         : ''
       li.innerHTML = `

@@ -51,8 +51,14 @@ export class FriendStorageManager {
     this._pendingFetches  = new Map()  // `${hex}:${name}` → { resolve, reject, timer }
     this._lastPong        = new Map()  // keyHex → timestamp
     this._pingTimers      = new Map()  // keyHex → interval id
+    this._ensureChannel   = null       // (hex) => boolean ; set by index.js
     this._load()
   }
+
+  // Hook used by requestStorage/fetchStorage to ask the wiring layer to
+  // re-open a friend-storage channel when the swarm peer is still alive but
+  // our Protomux channel got closed. Returns true if a setup was attempted.
+  setEnsureChannel (fn) { this._ensureChannel = fn }
 
   on (event, fn) {
     if (listeners[event]) listeners[event].push(fn)
@@ -142,6 +148,15 @@ export class FriendStorageManager {
     this._save()
     emit('ledger-changed')
 
+    // No open channel? Try to (re)open one before falling back to the queue.
+    if (!this._channels.has(keyHex) && this._ensureChannel) {
+      const attempted = this._ensureChannel(keyHex)
+      if (attempted) {
+        // Give the channel a moment to pair before deciding to queue.
+        await new Promise(r => setTimeout(r, 1500))
+      }
+    }
+
     const ch = this._channels.get(keyHex)
     if (ch) {
       try {
@@ -182,14 +197,20 @@ export class FriendStorageManager {
           ch.sendRequest(item.fileName, item.data)
           this._updateOutgoingStatus(keyHex, item.fileName, 'pending')
           activity.info('friend-storage: sent queued "' + item.fileName + '" to ' + keyHex.slice(0, 12) + '…')
+          // Successfully on the wire; drop the on-disk copy.
+          diskStore.deleteOutbound(keyHex, item.fileName).catch(err =>
+            dev.error('[fs] deleteOutbound failed:', err)
+          )
         } else if (item.kind === 'fetch') {
           ch.sendFetch(item.fileName)
           activity.info('friend-storage: requested "' + item.fileName + '" back from ' + keyHex.slice(0, 12) + '…')
         }
       } catch (err) {
         dev.error('[fs] flush failed:', err)
-        // Re-queue the failed item.
-        this._enqueue(keyHex, item)
+        // Re-queue the failed item (memory only; on-disk copy is still there).
+        const back = this._outboundQueue.get(keyHex) || []
+        back.push(item)
+        this._outboundQueue.set(keyHex, back)
       }
     }
     this._save()
@@ -203,11 +224,28 @@ export class FriendStorageManager {
       dev.warn('[fs] ignoring request from non-friend', fromKeyHex.slice(0, 12))
       return
     }
+    // Reject duplicates: either an unaccepted pending row exists, or we are
+    // already hosting this exact (peer, fileName). Without this guard a
+    // second REQUEST for the same name would overwrite _incomingData and a
+    // subsequent Accept could save the wrong bytes.
+    const alreadyPending = this._pending.find(
+      r => r.fromKeyHex === fromKeyHex && r.fileName === fileName
+    )
+    const alreadyHosting = (this._incoming.get(fromKeyHex) || [])
+      .find(f => f.fileName === fileName)
+    if (alreadyPending || alreadyHosting) {
+      const ch = this._channels.get(fromKeyHex)
+      if (ch) {
+        try { ch.sendDecline(fileName) } catch (err) { dev.error('[fs] sendDecline (dup) failed:', err) }
+      }
+      activity.warn('friend-storage: rejected duplicate request "' + fileName + '" from ' + fromKeyHex.slice(0, 12) + '\u2026')
+      return
+    }
     const key = fromKeyHex + ':' + fileName
     this._incomingData.set(key, data)
     this._pending.push({ fromKeyHex, fileName, sizeBytes: data.byteLength })
     emit('ledger-changed')
-    activity.info('friend-storage: incoming "' + fileName + '" from ' + fromKeyHex.slice(0, 12) + '…')
+    activity.info('friend-storage: incoming "' + fileName + '" from ' + fromKeyHex.slice(0, 12) + '\u2026')
   }
 
   async acceptRequest (fromKeyHex, fileName) {
@@ -295,10 +333,16 @@ export class FriendStorageManager {
     if (entry) entry.status = status
   }
 
-  // Cancel an outgoing entry that hasn't been delivered yet (status: queued).
-  // Drops the file bytes from the outbound queue and removes the ledger row.
+  // Cancel an outgoing entry. For 'queued' rows we just drop the buffered
+  // bytes locally. For 'pending' rows we also send a wire CANCEL so the host
+  // removes the request from their pending list and discards the bytes.
   cancelOutgoing (keyHex, fileName) {
     keyHex = keyHex.toLowerCase()
+
+    // What status was this row?
+    const list = this._outgoing.get(keyHex) || []
+    const entry = list.find(f => f.fileName === fileName)
+    const wasPending = entry && entry.status === 'pending'
 
     // Remove the matching item from the outbound queue (if any).
     const q = this._outboundQueue.get(keyHex)
@@ -308,9 +352,23 @@ export class FriendStorageManager {
       else this._outboundQueue.set(keyHex, filtered)
     }
 
+    // Drop the persisted copy too; do not await (best-effort).
+    diskStore.deleteOutbound(keyHex, fileName).catch(err =>
+      dev.error('[fs] deleteOutbound failed:', err)
+    )
+
+    // If we already shipped the request to the host, tell them to forget it.
+    if (wasPending) {
+      const ch = this._channels.get(keyHex)
+      if (ch) {
+        try { ch.sendCancel(fileName) } catch (err) { dev.error('[fs] sendCancel failed:', err) }
+      } else {
+        dev.warn('[fs] cancel for "' + fileName + '" but no channel; host won\'t be notified until reconnect')
+      }
+    }
+
     // Remove the ledger row.
-    const list = this._outgoing.get(keyHex)
-    if (list) {
+    if (list.length) {
       const next = list.filter(f => f.fileName !== fileName)
       if (next.length === 0) this._outgoing.delete(keyHex)
       else this._outgoing.set(keyHex, next)
@@ -319,6 +377,21 @@ export class FriendStorageManager {
     this._save()
     emit('ledger-changed')
     activity.info('friend-storage: cancelled "' + fileName + '"')
+  }
+
+  // Host side: requester told us to forget a pending request.
+  _onIncomingCancel (fromKeyHex, fileName) {
+    const dataKey = fromKeyHex + ':' + fileName
+    const had = this._incomingData.has(dataKey) ||
+      this._pending.find(r => r.fromKeyHex === fromKeyHex && r.fileName === fileName)
+    this._incomingData.delete(dataKey)
+    this._pending = this._pending.filter(
+      r => !(r.fromKeyHex === fromKeyHex && r.fileName === fileName)
+    )
+    if (had) {
+      emit('ledger-changed')
+      activity.info('friend-storage: peer cancelled "' + fileName + '" from ' + fromKeyHex.slice(0, 12) + '\u2026')
+    }
   }
 
   // ── Retrieve flow (Phase C) ───────────────────────────────────────
@@ -330,6 +403,11 @@ export class FriendStorageManager {
     const key = friendHex + ':' + fileName
     if (this._pendingFetches.has(key)) {
       return Promise.reject(new Error('a fetch for this file is already in flight'))
+    }
+
+    // Try to (re)open a channel if we don't have one but the peer might be alive.
+    if (!this._channels.has(friendHex) && this._ensureChannel) {
+      this._ensureChannel(friendHex)
     }
 
     return new Promise((resolve, reject) => {
@@ -513,5 +591,73 @@ export class FriendStorageManager {
         for (const [k, v] of Object.entries(obj)) this._incoming.set(k, v)
       }
     } catch (_) {}
+
+    // After sync load, schedule async disk reconciliation. Don't block the
+    // constructor on Localdrive I/O.
+    setTimeout(() => {
+      this._rehydrateOutbound().catch(err => dev.error('[fs] rehydrate outbound failed:', err))
+      this._reconcileIncoming().catch(err => dev.error('[fs] reconcile incoming failed:', err))
+    }, 0)
+  }
+
+  // Rebuild _outboundQueue from disk after a restart so 'queued' rows in the
+  // outgoing ledger have their bytes back. Flushes any hex that already has
+  // a live channel registered (unlikely at boot, but cheap).
+  async _rehydrateOutbound () {
+    let entries = []
+    try { entries = await diskStore.listOutbound() } catch (err) {
+      dev.error('[fs] listOutbound failed:', err)
+      return
+    }
+    if (entries.length === 0) return
+
+    let restored = 0
+    for (const { friendHex, fileName } of entries) {
+      try {
+        const data = await diskStore.getOutbound(friendHex, fileName)
+        if (!data) continue
+        const q = this._outboundQueue.get(friendHex) || []
+        // Don't double-add if a row was somehow already enqueued in memory.
+        if (!q.find(it => it.kind === 'request' && it.fileName === fileName)) {
+          q.push({ kind: 'request', fileName, data })
+          this._outboundQueue.set(friendHex, q)
+          restored++
+        }
+      } catch (err) {
+        dev.error('[fs] getOutbound failed:', err)
+      }
+    }
+    if (restored > 0) {
+      activity.info('friend-storage: rehydrated ' + restored + ' queued request(s) from disk')
+      // Try flushing any peers that already have channels.
+      for (const hex of this._outboundQueue.keys()) {
+        if (this._channels.has(hex)) this._flushOutboundQueue(hex)
+      }
+    }
+  }
+
+  // Drop _incoming ledger rows whose backing file is no longer on disk.
+  async _reconcileIncoming () {
+    let entries = []
+    try { entries = await diskStore.listIncoming() } catch (err) {
+      dev.error('[fs] listIncoming failed:', err)
+      return
+    }
+    const onDisk = new Set(entries.map(e => e.requesterHex + ':' + e.fileName))
+
+    let dropped = 0
+    for (const [hex, files] of this._incoming) {
+      const kept = files.filter(f => onDisk.has(hex + ':' + f.fileName))
+      if (kept.length !== files.length) {
+        dropped += files.length - kept.length
+        if (kept.length === 0) this._incoming.delete(hex)
+        else this._incoming.set(hex, kept)
+      }
+    }
+    if (dropped > 0) {
+      this._save()
+      emit('ledger-changed')
+      activity.warn('friend-storage: dropped ' + dropped + ' incoming ledger row(s) with missing files')
+    }
   }
 }
