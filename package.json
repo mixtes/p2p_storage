@@ -26,12 +26,15 @@
   "dependencies": {
     "b4a": "^1.8.0",
     "corestore": "^7.9.2",
+    "hyperbee": "^2.27.3",
     "hypercore-crypto": "^3.6.1",
+    "hyperdht": "^6.30.0",
     "hyperdrive": "^13.3.2",
     "hyperswarm": "^4.17.0",
     "localdrive": "^2.2.1",
     "mirror-drive": "^1.14.2",
     "pear-bridge": "^1.2.5",
-    "pear-electron": "^1.7.28"
+    "pear-electron": "^1.7.28",
+    "sodium-universal": "^5.0.1"
   }
 }

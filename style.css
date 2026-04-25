@@ -156,6 +156,50 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
 .log div[data-level="dev-warn"]  { color: #b48a4a; }
 .log div[data-level="dev-error"] { color: #b86b6b; }
 
+/* Recovery card */
+.recovery-card {
+  margin: 16px 20px 0;
+  border-color: #b08c3e;
+  background: #2a2820;
+}
+.recovery-warning { color: #d4a94b; }
+.recovery-warning strong { color: #f0c45a; }
+.recovery-warning em { font-style: normal; color: #e07a5f; }
+
+.recovery-seed-row {
+  display: flex; align-items: center; gap: 10px;
+  margin: 10px 0 14px;
+}
+.recovery-seed {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: #c4d0ff; word-break: break-all;
+  background: #1c2230; border: 1px solid #353c52; border-radius: 6px;
+  padding: 10px 12px;
+  user-select: all;
+  transition: filter .2s;
+}
+.recovery-seed.blurred {
+  filter: blur(5px);
+  user-select: none;
+  cursor: default;
+}
+
+.btn-small {
+  background: #3a4258; color: #c4d0ff; border: 0; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-small:hover { background: #454e68; }
+
+.btn-outline {
+  background: transparent; color: #d4a94b;
+  border: 1px solid #b08c3e; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  width: 100%;
+}
+.btn-outline:hover { background: rgba(176, 140, 62, 0.12); }
+
 /* Feature views */
 .feature-view { padding-top: 14px; }
 .feature-view.hidden { display: none; }
@@ -168,156 +212,99 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
   text-align: center;
 }
 
-/* ── Friend Storage ─────────────────────────────────────── */
+/* ── Replication UI ──────────────────────────────────────────────────── */
 
-/* Sub-tabs (inside the feature view, smaller than main tabs) */
-.fs-sub-tabs {
-  display: flex;
-  gap: 0;
-  padding: 14px 0 0;
+.repl-field {
+  display: flex; flex-direction: column; gap: 4px;
 }
-.fs-tab-btn {
-  background: transparent;
-  color: #8a93a6;
-  border: 1px solid #2f3648;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  padding: 7px 16px;
+.repl-field label {
+  font-size: 11px; color: #8a93a6; text-transform: uppercase;
+  letter-spacing: .5px;
+}
+
+/* Health indicators */
+.repl-health-row {
+  display: flex; gap: 20px; margin-bottom: 12px;
+}
+.health-stat {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: #c4d0ff;
+}
+.health-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.health-green { background: #4ade80; box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.15); }
+.health-yellow { background: #f0b86b; box-shadow: 0 0 0 3px rgba(240, 184, 107, 0.15); }
+.health-red { background: #ff6b6b; box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.15); }
+
+/* Per-file health bars */
+.file-health-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid #2c3344;
+}
+.file-health-row:last-child { border-bottom: 0; }
+
+.file-health-name {
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .4px;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background .15s, color .15s;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #c4d0ff;
+  min-width: 120px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.fs-tab-btn:hover { color: #c4d0ff; background: #1c2230; }
-.fs-tab-btn.active {
+.health-bar {
+  flex: 1; height: 6px; border-radius: 3px;
   background: #1c2230;
-  color: #E6E6E6;
-  border-color: #5b8def;
-  border-bottom: 1px solid #1c2230;
+  overflow: hidden;
+}
+.health-bar-fill {
+  height: 100%; border-radius: 3px;
+  transition: width .3s ease;
+}
+.bar-green { background: #4ade80; }
+.bar-yellow { background: #f0b86b; }
+.bar-red { background: #ff6b6b; }
+
+.file-health-pct {
+  font-size: 11px; color: #8a93a6;
+  min-width: 32px; text-align: right;
 }
 
-/* fs-view sits inside the feature-view; same hidden toggle */
-.fs-view { padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
-.fs-view.hidden { display: none; }
-
-/* Friends list */
-.fs-friend-list {
-  list-style: none; padding: 0; margin: 10px 0 0;
+/* Agreement cards */
+.repl-agreements {
   display: flex; flex-direction: column; gap: 6px;
 }
-.friend-card {
+.agreement-card {
   display: flex; align-items: center; gap: 10px;
-  background: #1c2230; border: 1px solid #353c52;
-  border-radius: 6px; padding: 7px 10px;
+  background: #1c2230;
+  border: 1px solid #2c3344;
+  border-radius: 6px;
+  padding: 8px 12px;
   font-size: 12px;
 }
-.fs-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #555c70; flex-shrink: 0;
-  transition: background .2s;
-}
-.fs-dot.on { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.18); }
-.fs-dot-live    { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.18); }
-.fs-dot-stale   { background: #f5c542; box-shadow: 0 0 0 3px rgba(245,197,66,.18); }
-.fs-dot-offline { background: #555c70; }
-.fs-nick { font-weight: 600; color: #E6E6E6; min-width: 80px; }
-.fs-short-key {
+.agreement-peer {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px; color: #c4d0ff; flex: 1;
+  color: #c4d0ff;
+  flex: 1;
 }
-.fs-status-text { font-size: 11px; color: #6b7388; min-width: 46px; }
-.fs-add-btn {
-  background: #102a1e; color: #4ade80; border: 1px solid #1f4d36;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-  flex-shrink: 0;
+.agreement-detail {
+  color: #8a93a6;
 }
-.fs-add-btn:hover { background: #1a3d2a; }
-.fs-remove-btn {
-  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
-  border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
-  flex-shrink: 0;
+.agreement-status {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: .5px; color: #4ade80;
 }
-.fs-remove-btn:hover { background: #3a1f1f; }
 
-/* Select */
-.fs-select {
+/* Retrieve dropdown */
+#replRetrieveSelect {
   flex: 1; min-width: 0;
   background: #1c2230; border: 1px solid #353c52; border-radius: 6px;
   padding: 8px 10px; color: #E6E6E6; font-size: 13px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  cursor: pointer;
+  appearance: auto;
 }
-.fs-select:focus { outline: none; border-color: #5b8def; }
-
-/* Ledger rows (request + give lists) */
-.fs-ledger-list {
-  list-style: none; padding: 0; margin: 0;
-  display: flex; flex-direction: column; gap: 6px;
-}
-.fs-ledger-row {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: #1c2230; border: 1px solid #353c52;
-  border-radius: 6px; padding: 7px 10px; font-size: 12px;
-}
-.fs-file-name { font-weight: 600; color: #E6E6E6; flex: 1; min-width: 0; word-break: break-all; }
-.fs-ledger-peer { font-size: 11px; color: #8a93a6; }
-.fs-size { font-size: 11px; color: #6b7388; }
-
-/* Status badges */
-.badge {
-  font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
-  padding: 2px 7px; border-radius: 99px;
-}
-.badge-pending  { background: #3a3010; color: #f5c542; }
-.badge-hosted   { background: #102a1e; color: #4ade80; }
-.badge-requested { background: #102038; color: #5b8def; }
-.badge-queued   { background: #2a2638; color: #b5a9f5; }
-.badge-declined { background: #3a1010; color: #ff8a8a; }
-
-.fs-retrieve-btn {
-  background: #102038; color: #8ab4ff; border: 1px solid #2a4070;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-}
-.fs-retrieve-btn:hover { background: #16284a; }
-.fs-retrieve-btn:disabled { opacity: .5; cursor: progress; }
-
-/* Accept / Decline buttons */
-.fs-accept-btn {
-  background: #102a1e; color: #4ade80; border: 1px solid #1f4d36;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-}
-.fs-accept-btn:hover { background: #1a3d2a; }
-.fs-decline-btn {
-  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-}
-.fs-decline-btn:hover { background: #3a1f1f; }
-.fs-evict-btn {
-  background: transparent; color: #e05c5c; border: 1px solid #5c2b2b;
-  border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
-}
-.fs-evict-btn:hover { background: #3a1f1f; }
-.fs-cancel-btn {
-  background: transparent; color: #e0a85c; border: 1px solid #5c4a2b;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-}
-.fs-cancel-btn:hover { background: #3a2f1f; }
-.fs-retry-btn {
-  background: #102038; color: #8ab4ff; border: 1px solid #2a4070;
-  border-radius: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
-}
-.fs-retry-btn:hover { background: #16284a; }
-
-/* Storage bar */
-.storage-bar {
-  flex: 1; min-width: 60px; height: 6px; background: #353c52;
-  border-radius: 99px; overflow: hidden;
-}
-.storage-bar-fill { height: 100%; background: #5b8def; border-radius: 99px; transition: width .3s; }
-
-/* Misc */
-.fs-error { font-size: 11px; color: #e05c5c; margin: 4px 0 0; min-height: 14px; }
-.fs-saved-msg { font-size: 11px; color: #4ade80; }
-.fs-label { font-size: 13px; color: #8a93a6; white-space: nowrap; }
+#replRetrieveSelect:focus { outline: none; border-color: #5b8def; }

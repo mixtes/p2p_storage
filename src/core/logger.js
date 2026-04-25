@@ -10,6 +10,9 @@
 // Toggle developer logs by editing /config.json:
 //   { "devLogs": true }   // show [dev] lines
 //   { "devLogs": false }  // hide them (default)
+//
+// dev.* lines are tagged "[dev <level>]" in the panel so they are easy to
+// distinguish from user-facing activity.
 
 const $ = (id) => document.getElementById(id)
 
@@ -19,6 +22,7 @@ const pending = []
 function appendActivity (msg, level) {
   const el = $('log')
   if (!el) {
+    // Panel not mounted yet (very early boot). Buffer; flush on next call.
     pending.push({ msg, level })
     return
   }
@@ -41,14 +45,14 @@ function fmt (args) {
 }
 
 export const activity = {
-  info  (msg) { appendActivity(String(msg), 'info') },
-  warn  (msg) { appendActivity(String(msg), 'warn') },
+  info (msg) { appendActivity(String(msg), 'info') },
+  warn (msg) { appendActivity(String(msg), 'warn') },
   error (msg) { appendActivity(String(msg), 'error') }
 }
 
 export const dev = {
-  info  (...args) { if (devLogs) appendActivity('[dev info] '  + fmt(args), 'dev-info') },
-  warn  (...args) { if (devLogs) appendActivity('[dev warn] '  + fmt(args), 'dev-warn') },
+  info (...args)  { if (devLogs) appendActivity('[dev info] '  + fmt(args), 'dev-info') },
+  warn (...args)  { if (devLogs) appendActivity('[dev warn] '  + fmt(args), 'dev-warn') },
   error (...args) { if (devLogs) appendActivity('[dev error] ' + fmt(args), 'dev-error') },
   debug (...args) { if (devLogs) appendActivity('[dev debug] ' + fmt(args), 'dev-debug') }
 }
@@ -59,10 +63,6 @@ export function setStatus (text, on) {
   if (statusText) statusText.textContent = text
   if (statusDot) statusDot.classList.toggle('on', !!on)
 }
-
-// Back-compat shim for callers that still import { log } (file-sharing,
-// network.js, app.js). New code should use activity.* / dev.* directly.
-export function log (msg) { activity.info(msg) }
 
 // Load the flag from /config.json (served by pear-bridge). Async; safe to
 // fire-and-forget — calls before it resolves just no-op for dev.*.
@@ -77,7 +77,4 @@ export function log (msg) { activity.info(msg) }
     // config.json missing or invalid -> keep devLogs = false
   }
 })()
-
-// Quiet "Pear referenced but not imported" lint hint.
-void Pear
 
