@@ -31,7 +31,12 @@ export const MSG = {
   RETRIEVE: 'RETRIEVE',
   RETRIEVE_RESP: 'RETRIEVE_RESP',
   HEARTBEAT: 'HEARTBEAT',
-  REVOKE_CHUNK: 'REVOKE_CHUNK'
+  REVOKE_CHUNK: 'REVOKE_CHUNK',
+  // Friend storage (asymmetric: owner offloads file, friend holds it)
+  FS_PUSH_FILE: 'FS_PUSH_FILE',
+  FS_FILE_ACK: 'FS_FILE_ACK',
+  FS_RETRIEVE_FILE: 'FS_RETRIEVE_FILE',
+  FS_RETRIEVE_FILE_RESP: 'FS_RETRIEVE_FILE_RESP'
 }
 
 /* ── JSON envelope encoding ──────────────────────────────────────────── */
@@ -213,4 +218,26 @@ export function heartbeat (rpc, usedBytes, freeBytes) {
 
 export function revokeChunk (rpc, chunkId) {
   return rpc.send(MSG.REVOKE_CHUNK, { chunkId })
+}
+
+/* ── friend storage helpers ──────────────────────────────────────────── */
+
+export function fsPushFile (rpc, fileId, chunkIndex, chunkCount, totalSize, ownerKey, encryptedData) {
+  const ok = rpc.send(MSG.FS_PUSH_FILE, { fileId, chunkIndex, chunkCount, totalSize, ownerKey })
+  if (ok) rpc.sendBinary(encryptedData)
+  return ok
+}
+
+export function fsFileAck (rpc, fileId, chunkIndex) {
+  return rpc.send(MSG.FS_FILE_ACK, { fileId, chunkIndex })
+}
+
+export function fsRetrieveFile (rpc, fileId, chunkIndex, ownerKey) {
+  return rpc.send(MSG.FS_RETRIEVE_FILE, { fileId, chunkIndex, ownerKey })
+}
+
+export function fsRetrieveFileResp (rpc, fileId, chunkIndex, data) {
+  const ok = rpc.send(MSG.FS_RETRIEVE_FILE_RESP, { fileId, chunkIndex })
+  if (ok) rpc.sendBinary(data)
+  return ok
 }

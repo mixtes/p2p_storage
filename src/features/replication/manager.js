@@ -49,15 +49,20 @@ import {
 
 const connectedPeers = new Map()        // peerId -> rpc handle
 const peerCapacities = new Map()        // peerId -> { offeredBytes, usedBytes }
-let pendingBinary = new Map()           // peerId -> { chunkId, chunkIndex, totalSize }
+let pendingBinary = new Map()           // peerId -> { chunkId, chunkIndex, totalSize, [mode] }
 
 let config = null                       // { replicationFactor, offeredBytes, replicationKeyHex }
 let replicationKey = null               // Buffer, 32 bytes
+let friendStorageHandlers = null        // set by friend-storage feature on init
 
 const listeners = { configChanged: [], agreementChanged: [], chunkProgress: [], healthChanged: [] }
 
 export function on (event, fn) { if (listeners[event]) listeners[event].push(fn) }
 function emit (event, ...args) { for (const fn of listeners[event] || []) fn(...args) }
+
+export function setFriendStorageHandlers (handlers) {
+  friendStorageHandlers = handlers
+}
 
 /* ── initialisation ──────────────────────────────────────────────────── */
 
@@ -172,6 +177,17 @@ export function createProtocolHandlers () {
     },
 
     async onbinary (buf, peerId) {
+      const pending = pendingBinary.get(peerId)
+      if (pending?.mode === 'friend-store') {
+        pendingBinary.delete(peerId)
+        if (friendStorageHandlers?.onChunkData) friendStorageHandlers.onChunkData(pending, buf, peerId)
+        return
+      }
+      if (pending?.mode === 'friend-retrieve') {
+        pendingBinary.delete(peerId)
+        if (friendStorageHandlers?.onRetrieveData) friendStorageHandlers.onRetrieveData(pending, buf, peerId)
+        return
+      }
       await handleIncomingChunkData(buf, peerId)
     },
 
@@ -210,6 +226,24 @@ export function createProtocolHandlers () {
 
     [MSG.HEARTBEAT] (payload, peerId) {
       handleHeartbeat(payload, peerId)
+    },
+
+    /* ── friend storage ────────────────────────────────────────────── */
+
+    [MSG.FS_PUSH_FILE] (payload, peerId) {
+      pendingBinary.set(peerId, { ...payload, mode: 'friend-store' })
+    },
+
+    [MSG.FS_FILE_ACK] (payload, peerId) {
+      if (friendStorageHandlers?.onFileAck) friendStorageHandlers.onFileAck(payload, peerId)
+    },
+
+    [MSG.FS_RETRIEVE_FILE] (payload, peerId) {
+      if (friendStorageHandlers?.onRetrieveRequest) friendStorageHandlers.onRetrieveRequest(payload, peerId)
+    },
+
+    [MSG.FS_RETRIEVE_FILE_RESP] (payload, peerId) {
+      pendingBinary.set(peerId, { ...payload, mode: 'friend-retrieve' })
     }
   }
 }

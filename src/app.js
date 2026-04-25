@@ -27,6 +27,9 @@ network.on('peerRemove', () => renderPeers(network.getPeers()))
 
 fileSharing.init()
 await replication.init()
-friendStorage.init()
+await friendStorage.init()
+
+network.on('replicationPeer', () => friendStorage.refreshPeerList())
+network.on('replicationPeerRemove', () => friendStorage.refreshPeerList())
 
 router.init()

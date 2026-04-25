@@ -8,6 +8,7 @@ let store = null
 let localDrive = null
 let ownerManifest = null
 let keeperManifest = null
+let friendStorageManifest = null
 
 const vaultDrives = new Map()
 
@@ -33,6 +34,13 @@ export async function init () {
     valueEncoding: 'json'
   })
   await keeperManifest.ready()
+
+  const fsCore = store.get({ name: 'friend-storage-manifest' })
+  friendStorageManifest = new Hyperbee(fsCore, {
+    keyEncoding: 'utf-8',
+    valueEncoding: 'json'
+  })
+  await friendStorageManifest.ready()
 
   teardown(async () => {
     for (const drive of vaultDrives.values()) {
@@ -79,6 +87,14 @@ export function getOwnerManifest () {
  */
 export function getKeeperManifest () {
   return keeperManifest
+}
+
+/**
+ * Friend storage manifest: tracks files the owner offloaded to friends.
+ *   fs-file:<fileId> -> { filePath, size, chunkCount, friendPeerId, encKeyHex, storedAt }
+ */
+export function getFriendStorageManifest () {
+  return friendStorageManifest
 }
 
 /* ── vault drives (one per hosted owner) ─────────────────────────────── */
