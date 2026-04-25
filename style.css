@@ -156,6 +156,50 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
 .log div[data-level="dev-warn"]  { color: #b48a4a; }
 .log div[data-level="dev-error"] { color: #b86b6b; }
 
+/* Recovery card */
+.recovery-card {
+  margin: 16px 20px 0;
+  border-color: #b08c3e;
+  background: #2a2820;
+}
+.recovery-warning { color: #d4a94b; }
+.recovery-warning strong { color: #f0c45a; }
+.recovery-warning em { font-style: normal; color: #e07a5f; }
+
+.recovery-seed-row {
+  display: flex; align-items: center; gap: 10px;
+  margin: 10px 0 14px;
+}
+.recovery-seed {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: #c4d0ff; word-break: break-all;
+  background: #1c2230; border: 1px solid #353c52; border-radius: 6px;
+  padding: 10px 12px;
+  user-select: all;
+  transition: filter .2s;
+}
+.recovery-seed.blurred {
+  filter: blur(5px);
+  user-select: none;
+  cursor: default;
+}
+
+.btn-small {
+  background: #3a4258; color: #c4d0ff; border: 0; border-radius: 6px;
+  padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.btn-small:hover { background: #454e68; }
+
+.btn-outline {
+  background: transparent; color: #d4a94b;
+  border: 1px solid #b08c3e; border-radius: 6px;
+  padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  width: 100%;
+}
+.btn-outline:hover { background: rgba(176, 140, 62, 0.12); }
+
 /* Feature views */
 .feature-view { padding-top: 14px; }
 .feature-view.hidden { display: none; }

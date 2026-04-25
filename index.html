@@ -34,11 +34,30 @@
         <code id="myKey">&hellip;</code>
       </div>
       <div class="kv">
+        <span>my public key</span>
+        <code id="myPublicKey">&hellip;</code>
+      </div>
+      <div class="kv">
         <span>connected peers</span>
         <ul id="peers" class="peers">
           <li class="empty">none yet</li>
         </ul>
       </div>
+    </section>
+
+    <!-- Recovery key banner (shown once on first run) -->
+    <section class="card recovery-card" id="recovery-card" hidden>
+      <h2>Recovery Key</h2>
+      <p class="hint recovery-warning">
+        This is your <strong>secret recovery key</strong>. It is the only way to
+        restore your identity on another device. Save it somewhere safe &mdash;
+        it will not be shown again. <em>Anyone with this key can impersonate you.</em>
+      </p>
+      <div class="recovery-seed-row">
+        <code id="recoverySeed" class="recovery-seed blurred">&hellip;</code>
+        <button id="revealSeedBtn" class="btn-small">Reveal</button>
+      </div>
+      <button id="dismissRecoveryBtn" class="btn-outline">I&rsquo;ve saved my recovery key</button>
     </section>
 
     <!-- Feature tabs -->
