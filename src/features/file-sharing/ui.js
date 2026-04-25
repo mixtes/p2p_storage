@@ -39,7 +39,6 @@ async function handleJoin () {
 
 async function handleSend () {
   if (!sendFile) return alert('Pick a file to send first')
-  log('send clicked: ' + sendFile.name + ' (' + sendFile.size + ' bytes), peers=' + network.getPeers().size)
   try {
     await pushSendFile(sendFile)
   } catch (err) {
@@ -50,8 +49,7 @@ async function handleSend () {
 async function handleReceive () {
   if (!receiveFolder) return alert('Pick a download folder first')
   const peers = network.getPeers()
-  log('receive clicked, downloadFolder=' + receiveFolder + ', known peers=' + peers.size)
-  if (peers.size === 0) log('no peers known yet; downloads will begin as peers arrive')
+  if (peers.size === 0) log('no peers yet; downloads will begin as peers arrive')
   for (const peer of peers.values()) {
     try {
       await startReceiving(peer, receiveFolder)
@@ -62,13 +60,8 @@ async function handleReceive () {
 }
 
 function handleFileSelect (e) {
-  log('sendFileInput change: files=' + (e.target.files ? e.target.files.length : 0))
   const file = e.target.files && e.target.files[0]
-  if (!file) {
-    log('sendFileInput: no file selected (cancelled?)')
-    return
-  }
-  log('sendFileInput: name=' + file.name + ' size=' + file.size + ' path=' + (file.path || '(missing)') + ' type=' + (file.type || '(none)'))
+  if (!file) return
   sendFile = { file, name: file.name, path: file.path || null, size: file.size }
   $('sendFileLabel').textContent = file.name + ' (' + file.size + ' bytes)'
   $('sendBtn').disabled = false
@@ -76,13 +69,9 @@ function handleFileSelect (e) {
 }
 
 async function handleFolderPick () {
-  log('opening native folder picker…')
   try {
     const folder = await pickFolderNative()
-    if (!folder) {
-      log('folder picker cancelled')
-      return
-    }
+    if (!folder) return
     setReceiveFolder(folder)
   } catch (err) {
     log('folder picker error: ' + err.message)
@@ -108,11 +97,6 @@ function setReceiveFolder (folder) {
 function restoreReceiveFolder () {
   try {
     const saved = localStorage.getItem('p2p.receiveFolder')
-    if (saved) {
-      setReceiveFolder(saved)
-      log('restored receive folder: ' + saved)
-    }
-  } catch (err) {
-    log('localStorage restore error: ' + err.message)
-  }
+    if (saved) setReceiveFolder(saved)
+  } catch {}
 }

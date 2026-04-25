@@ -49,7 +49,7 @@ function handleConnection (conn, info) {
 
   try {
     const peerId = b4a.toString(conn.remotePublicKey, 'hex').slice(0, 12)
-    log('peer connected: ' + peerId + ' (client=' + !!(info && info.client) + ')')
+    log('peer connected: ' + peerId)
 
     store.replicate(conn)
 
@@ -66,7 +66,6 @@ function handleConnection (conn, info) {
     keyMessage = channel.addMessage({
       encoding: c.raw,
       async onmessage (remoteKey) {
-        log('received remote key from ' + peerId + ': ' + b4a.toString(remoteKey, 'hex').slice(0, 16) + '…')
         try {
           await onRemoteKey(remoteKey, peerId)
         } catch (err) {
@@ -96,12 +95,7 @@ async function onRemoteKey (key, connPeerId) {
   await drive.ready()
   log('remote drive ready: ' + hex.slice(0, 16) + '… (v' + drive.version + ')')
 
-  try {
-    drive.download('/')
-    log('prefetch started for ' + hex.slice(0, 16) + '…')
-  } catch (err) {
-    log('prefetch error: ' + err.message)
-  }
+  try { drive.download('/') } catch (err) { log('prefetch error: ' + err.message) }
 
   const peer = { drive, watcher: null, connPeerId }
   peers.set(hex, peer)
