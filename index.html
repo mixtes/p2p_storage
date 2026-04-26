@@ -238,62 +238,16 @@
       </div>
 
       <!-- Feature 3: Friend Storage -->
+      <!-- Feature 3: Friend Storage (peers on the same topic share storage) -->
       <div id="view-friend-storage" class="feature-view hidden">
-
-        <!-- Trusted friends -->
-        <section class="card" id="fs-friends-card">
-          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-            <h2 style="margin:0">Trusted Friends</h2>
-            <div class="row" style="gap:6px">
-              <button id="fsAddFriendBtn" class="btn-blue btn-small" type="button">+ Add Friend</button>
-              <button id="fsRequestsBtn" class="btn-small" type="button">
-                Friend Requests <span id="fsRequestsBadge" class="fs-badge hidden">0</span>
-              </button>
-            </div>
-          </div>
-
-          <div id="fsAddFriendForm" class="hidden" style="margin-top:10px">
-            <p class="hint" style="margin:0 0 6px">
-              Enter your friend's public key. They will receive a request and
-              must accept it before you become friends.
-            </p>
-            <div class="row" style="gap:6px">
-              <input id="fsFriendKeyInput" type="text" placeholder="friend's public key (64 hex chars)"
-                     spellcheck="false" autocomplete="off" style="flex:1;min-width:0" />
-              <input id="fsFriendLabelInput" type="text" placeholder="label (optional)"
-                     style="width:140px;flex:none" />
-            </div>
-            <div class="row" style="gap:6px;margin-top:6px">
-              <input id="fsFriendNoteInput" type="text" placeholder="note to send (optional)"
-                     style="flex:1;min-width:0" />
-              <button id="fsAddFriendConfirmBtn" class="btn-blue btn-small" type="button">Send Request</button>
-              <button id="fsAddFriendCancelBtn" class="btn-small" type="button">Cancel</button>
-            </div>
-          </div>
-
-          <div id="fsRequestsPanel" class="hidden" style="margin-top:10px">
-            <h3 style="margin:0 0 6px;font-size:13px;color:#c4d0ff">Incoming</h3>
-            <div id="fs-incoming-list" class="repl-agreements">
-              <div class="placeholder">No incoming friend requests</div>
-            </div>
-            <h3 style="margin:14px 0 6px;font-size:13px;color:#c4d0ff">Sent</h3>
-            <div id="fs-outgoing-list" class="repl-agreements">
-              <div class="placeholder">No pending sent requests</div>
-            </div>
-          </div>
-
-          <div id="fs-friends-list" class="repl-agreements" style="margin-top:10px">
-            <div class="placeholder">No trusted friends yet</div>
-          </div>
-        </section>
 
         <!-- Global offer setting -->
         <section class="card">
           <h2>Offer Memory</h2>
           <p class="hint">
-            Set how much of your disk you are willing to lend to friends.
-            Connected peers can then offload encrypted files to you &mdash;
-            you hold the blobs but cannot read them.
+            Set how much of your disk you are willing to lend. Connected peers
+            can offload encrypted files to you &mdash; you hold the blobs but
+            cannot read them.
           </p>
           <div class="row" style="margin-bottom:8px">
             <div class="repl-field">
@@ -309,16 +263,29 @@
           </div>
         </section>
 
-        <!-- Per-friend detail (visible only after a friend is selected) -->
-        <div id="fs-friend-detail" class="hidden">
+        <!-- Connected peers list -->
+        <section class="card">
+          <h2>Connected Peers</h2>
+          <p class="hint">
+            Peers you are currently connected to. Pick one to lend space to or
+            borrow from. The replication pool topic is joined automatically;
+            you can also share a topic on the File Sharing tab to add more peers.
+          </p>
+          <div id="fs-peers-list" class="repl-agreements">
+            <div class="placeholder">No peers connected yet</div>
+          </div>
+        </section>
+
+        <!-- Per-peer detail (visible only after a peer is selected) -->
+        <div id="fs-peer-detail" class="hidden">
 
           <section class="card">
             <div class="row" style="justify-content:space-between;align-items:center">
               <div>
-                <h2 id="fs-detail-name" style="margin:0">Friend</h2>
+                <h2 id="fs-detail-name" style="margin:0">Peer</h2>
                 <code id="fs-detail-key" style="font-size:11px;color:#8a93a6">&hellip;</code>
               </div>
-              <button id="fsDeselectBtn" class="btn-small" type="button">← Back to friends</button>
+              <button id="fsDeselectBtn" class="btn-small" type="button">← Back to peers</button>
             </div>
           </section>
 
@@ -327,13 +294,13 @@
             <button class="subtab-btn" data-fs-subtab="borrow">Borrow Space</button>
           </nav>
 
-          <!-- Lend pane: space I lend to THIS friend -->
+          <!-- Lend pane: how much of MY space this peer uses -->
           <div id="fs-pane-lend" class="fs-pane">
             <section class="card">
-              <h2>Space This Friend Uses</h2>
+              <h2>Space This Peer Uses</h2>
               <p class="hint">
-                How much of your offered space this friend is currently using
-                on your device.
+                How much of your offered space this peer is currently using on
+                your device.
               </p>
               <div class="kv">
                 <span>used</span>
@@ -346,37 +313,37 @@
             </section>
           </div>
 
-          <!-- Borrow pane: files I have stored at THIS friend -->
+          <!-- Borrow pane: files I have stored at THIS peer -->
           <div id="fs-pane-borrow" class="fs-pane hidden">
             <section class="card">
-              <h2>Send to this Friend</h2>
+              <h2>Send to this Peer</h2>
               <p class="hint">
-                Send an encrypted file to this friend for safekeeping. Only you
+                Send an encrypted file to this peer for safekeeping. Only you
                 can decrypt it &mdash; no local copy is kept after the transfer.
               </p>
               <div class="row" style="margin-bottom:8px">
                 <button id="fsPickBtn" type="button">Choose file&hellip;</button>
-                <button id="fsStoreBtn" class="btn-blue" disabled>Store with Friend</button>
+                <button id="fsStoreBtn" class="btn-blue" disabled>Store with Peer</button>
               </div>
               <div class="kv">
                 <span>file to store</span>
                 <code id="fsFileLabel">(none selected)</code>
               </div>
               <div class="kv">
-                <span>friend status</span>
+                <span>peer status</span>
                 <code id="fs-friend-conn-status">offline</code>
               </div>
               <input id="fsFileInput" type="file" hidden />
             </section>
 
             <section class="card">
-              <h2>Stored at this Friend</h2>
+              <h2>Stored at this Peer</h2>
               <p class="hint">
-                Files you have offloaded to this friend. Click Retrieve to
-                fetch &amp; decrypt one back to your device.
+                Files you have offloaded to this peer. Click Retrieve to fetch
+                &amp; decrypt one back to your device.
               </p>
               <div id="fs-stored-list" class="repl-agreements">
-                <div class="placeholder">No files stored with this friend yet</div>
+                <div class="placeholder">No files stored with this peer yet</div>
               </div>
             </section>
           </div>
@@ -384,6 +351,7 @@
         </div>
 
       </div>
+
     </main>
 
     <!-- Activity log (always visible) -->

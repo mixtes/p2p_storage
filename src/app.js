@@ -29,10 +29,7 @@ fileSharing.init()
 await replication.init()
 await friendStorage.init()
 
-network.on('replicationPeer', (peerId) => {
-  friendStorage.refreshPeerList()
-  friendStorage.manager.flushOutgoingRequests(peerId).catch(() => {})
-})
+network.on('replicationPeer', () => friendStorage.refreshPeerList())
 network.on('replicationPeerRemove', () => friendStorage.refreshPeerList())
 
 router.init()

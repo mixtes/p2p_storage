@@ -36,10 +36,7 @@ export const MSG = {
   FS_PUSH_FILE: 'FS_PUSH_FILE',
   FS_FILE_ACK: 'FS_FILE_ACK',
   FS_RETRIEVE_FILE: 'FS_RETRIEVE_FILE',
-  FS_RETRIEVE_FILE_RESP: 'FS_RETRIEVE_FILE_RESP',
-  // Friend requests
-  FS_FRIEND_REQUEST: 'FS_FRIEND_REQUEST',
-  FS_FRIEND_REQUEST_ACCEPT: 'FS_FRIEND_REQUEST_ACCEPT'
+  FS_RETRIEVE_FILE_RESP: 'FS_RETRIEVE_FILE_RESP'
 }
 
 /* ── JSON envelope encoding ──────────────────────────────────────────── */
@@ -251,10 +248,3 @@ export function fsRetrieveFileResp (rpc, fileId, chunkIndex, data) {
   return ok
 }
 
-export function fsFriendRequest (rpc, fromKey, label, note) {
-  return rpc.send(MSG.FS_FRIEND_REQUEST, { fromKey, label, note })
-}
-
-export function fsFriendRequestAccept (rpc, fromKey, label) {
-  return rpc.send(MSG.FS_FRIEND_REQUEST_ACCEPT, { fromKey, label })
-}
