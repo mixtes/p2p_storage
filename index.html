@@ -22,8 +22,8 @@
     <section class="card" id="network-card">
       <h2>Network</h2>
       <p class="hint">
-        Both devices type the same topic string. Anyone on the same topic
-        connects automatically &mdash; no server in the middle.
+        Enter a topic to connect for file sharing. Replication peers are
+        discovered automatically &mdash; no topic needed.
       </p>
       <div class="row">
         <input id="topic" placeholder="e.g. apple-river-92" />
@@ -107,36 +107,6 @@
       <!-- Feature 2: Storage Replication -->
       <div id="view-replication" class="feature-view hidden">
 
-        <!-- Configuration -->
-        <section class="card" id="repl-config-card">
-          <h2>Replication Setup</h2>
-          <p class="hint">
-            Choose how many copies (N) of your data to keep across the network.
-            You must offer N&times; your data size as storage for other peers.
-          </p>
-
-          <div id="repl-config-form">
-            <div class="row" style="margin-bottom:8px">
-              <div class="repl-field">
-                <label for="replFactor">Copies (N)</label>
-                <input id="replFactor" type="number" min="1" max="10" value="2"
-                       style="width:70px;flex:none" />
-              </div>
-              <div class="repl-field">
-                <label for="replOffer">Space to offer (MB)</label>
-                <input id="replOffer" type="number" min="1" value="512"
-                       style="width:100px;flex:none" />
-              </div>
-              <button id="replConfigBtn">Apply</button>
-            </div>
-          </div>
-
-          <div id="repl-config-status" class="kv" hidden>
-            <span>status</span>
-            <code id="replConfigLabel">&hellip;</code>
-          </div>
-        </section>
-
         <!-- Health overview -->
         <section class="card" id="repl-health-card">
           <h2>Replication Health</h2>
@@ -159,22 +129,34 @@
           <div id="repl-file-health"></div>
         </section>
 
-        <!-- Replicate a file -->
+        <!-- Replicate files / folders -->
         <section class="card">
-          <h2>Replicate a File</h2>
+          <h2>Replicate Files</h2>
           <p class="hint">
-            Pick a file to encrypt, chunk, and distribute across your keepers.
-            Only you can decrypt it &mdash; keepers only see opaque encrypted blocks.
+            Pick files or a folder to encrypt, chunk, and distribute across
+            the network. Each item gets its own copy count (N). Only you can
+            decrypt your data &mdash; keepers only see opaque encrypted blocks.
           </p>
-          <div class="row">
-            <button id="replPickBtn" type="button">Choose file&hellip;</button>
-            <button id="replSendBtn" disabled>Replicate</button>
+          <div class="row" style="margin-bottom:8px">
+            <button id="replPickBtn" type="button">Choose files&hellip;</button>
+            <button id="replPickFolderBtn" type="button">Choose folder&hellip;</button>
+            <button id="replClearBtn" type="button" disabled>Clear</button>
           </div>
-          <div class="kv">
-            <span>file to replicate</span>
-            <code id="replFileLabel">(none selected)</code>
+          <input id="replFileInput" type="file" multiple hidden />
+          <input id="replFolderInput" type="file" webkitdirectory hidden />
+
+          <div id="repl-queue" class="repl-queue">
+            <div class="placeholder">No files selected</div>
           </div>
-          <input id="replFileInput" type="file" hidden />
+
+          <div id="repl-space-info" class="kv" hidden>
+            <span>min. space reserved for other peers</span>
+            <code id="replSpaceCalc">0 B</code>
+          </div>
+
+          <div class="row" style="margin-top:8px">
+            <button id="replSendBtn" disabled>Replicate All</button>
+          </div>
         </section>
 
         <!-- Retrieve a file -->
@@ -192,18 +174,15 @@
           </div>
         </section>
 
-        <!-- Agreements & keeper stats -->
+        <!-- Storage peers (was "Agreements") -->
         <section class="card">
-          <h2>Agreements</h2>
+          <h2>Storage Peers</h2>
           <p class="hint">
-            Peers you have active storage agreements with. Each keeper holds
-            a portion of your encrypted chunks.
+            Peers holding your encrypted chunks. Agreements are negotiated
+            automatically when you replicate files.
           </p>
-          <div class="row" style="margin-bottom:8px">
-            <button id="replRequestBtn" disabled>Request Agreements</button>
-          </div>
           <div id="repl-agreements" class="repl-agreements">
-            <div class="placeholder">No agreements yet</div>
+            <div class="placeholder">No storage peers yet</div>
           </div>
         </section>
 

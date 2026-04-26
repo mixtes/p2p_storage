@@ -2,36 +2,37 @@
  * Replication UI
  *
  * DOM bindings for the replication dashboard:
- *  - Configuration (N, offered bytes)
+ *  - Multi-file / folder picker with per-item replication factor (N)
+ *  - Auto-calculated space commitment
  *  - Health indicators (per keeper, per file)
- *  - File picker for replication
  *  - Retrieve selector for previously replicated files
- *  - Agreement list
+ *  - Storage peers list (auto-managed agreements)
  *  - Hosted-for-others stats
  */
 
 import { activity } from '../../core/logger.js'
 import * as manager from './manager.js'
-import { pushFileFromBuffer, pullFileToBuffer } from './sync.js'
+import { pushFileFromBuffer, pushFolderFromFiles, pullFileToBuffer } from './sync.js'
 import * as healthMonitor from '../../core/health-monitor.js'
 
 const $ = (id) => document.getElementById(id)
 
-let replFile = null
+const replQueue = []
 
 export function init () {
-  $('replConfigBtn').addEventListener('click', handleConfigure)
   $('replPickBtn').addEventListener('click', () => $('replFileInput').click())
+  $('replPickFolderBtn').addEventListener('click', () => $('replFolderInput').click())
   $('replFileInput').addEventListener('change', handleFilePick)
+  $('replFolderInput').addEventListener('change', handleFolderPick)
+  $('replClearBtn').addEventListener('click', handleClear)
   $('replSendBtn').addEventListener('click', handleReplicate)
   $('replRetrieveBtn').addEventListener('click', handleRetrieve)
-  $('replRequestBtn').addEventListener('click', handleRequestAgreements)
 
   $('replRetrieveSelect').addEventListener('change', () => {
     $('replRetrieveBtn').disabled = !$('replRetrieveSelect').value
   })
 
-  manager.on('configChanged', renderConfig)
+  manager.on('configChanged', refreshSpaceInfo)
   manager.on('agreementChanged', refreshAgreements)
   manager.on('chunkProgress', refreshHealth)
   manager.on('healthChanged', refreshHealth)
@@ -40,82 +41,144 @@ export function init () {
   healthMonitor.on('degraded', refreshHealth)
   healthMonitor.on('recovered', refreshHealth)
 
-  if (manager.isConfigured()) {
-    renderConfig(manager.getConfig())
-    $('replRequestBtn').disabled = false
-  }
-
   refreshAll()
 }
 
-/* ── configuration ───────────────────────────────────────────────────── */
+/* ── file / folder picking ───────────────────────────────────────────── */
 
-async function handleConfigure () {
-  const factor = parseInt($('replFactor').value, 10)
-  const offerMb = parseInt($('replOffer').value, 10)
+function handleFilePick (e) {
+  const files = e.target.files
+  if (!files || files.length === 0) return
 
-  if (!factor || factor < 1 || factor > 10) {
-    activity.warn('replication factor must be 1–10')
-    return
-  }
-  if (!offerMb || offerMb < 1) {
-    activity.warn('offered space must be at least 1 MB')
-    return
+  for (const file of files) {
+    replQueue.push({ name: file.name, size: file.size, file, n: 2 })
   }
 
-  const offeredBytes = offerMb * 1024 * 1024
-  try {
-    await manager.configure(factor, offeredBytes)
-    $('replRequestBtn').disabled = false
-  } catch (err) {
-    activity.error('config error: ' + err.message)
-  }
+  renderQueue()
+  e.target.value = ''
 }
 
-function renderConfig (config) {
-  if (!config) return
-  $('repl-config-status').hidden = false
-  $('replConfigLabel').textContent =
-    'N=' + config.replicationFactor +
-    '  offering ' + formatBytes(config.offeredBytes)
-  $('replFactor').value = config.replicationFactor
-  $('replOffer').value = Math.round(config.offeredBytes / (1024 * 1024))
+function handleFolderPick (e) {
+  const files = e.target.files
+  if (!files || files.length === 0) return
+
+  let folderName = ''
+  for (const file of files) {
+    if (!folderName && file.webkitRelativePath) {
+      folderName = file.webkitRelativePath.split('/')[0]
+    }
+    const path = file.webkitRelativePath || file.name
+    replQueue.push({ name: path, size: file.size, file, n: 2 })
+  }
+
+  if (folderName) {
+    activity.info('added folder: ' + folderName + ' (' + files.length + ' files)')
+  }
+
+  renderQueue()
+  e.target.value = ''
+}
+
+function handleClear () {
+  replQueue.length = 0
+  renderQueue()
+}
+
+function renderQueue () {
+  const container = $('repl-queue')
+  const hasItems = replQueue.length > 0
+
+  $('replSendBtn').disabled = !hasItems
+  $('replClearBtn').disabled = !hasItems
+
+  if (!hasItems) {
+    container.innerHTML = '<div class="placeholder">No files selected</div>'
+    $('repl-space-info').hidden = true
+    return
+  }
+
+  container.innerHTML = replQueue.map((item, idx) =>
+    '<div class="repl-queue-item">' +
+      '<span class="repl-queue-name" title="' + escHtml(item.name) + '">' +
+        truncatePath(item.name) +
+      '</span>' +
+      '<span class="repl-queue-size">' + formatBytes(item.size) + '</span>' +
+      '<label class="repl-queue-n-label">N:</label>' +
+      '<input type="number" class="repl-queue-n" min="1" max="10" value="' + item.n + '" data-idx="' + idx + '" />' +
+      '<button class="repl-queue-remove" data-idx="' + idx + '">&times;</button>' +
+    '</div>'
+  ).join('')
+
+  container.querySelectorAll('.repl-queue-n').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10)
+      const val = parseInt(e.target.value, 10)
+      if (val >= 1 && val <= 10) {
+        replQueue[i].n = val
+      } else {
+        e.target.value = replQueue[i].n
+      }
+      updateSpaceCalc()
+    })
+  })
+
+  container.querySelectorAll('.repl-queue-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const i = parseInt(e.target.dataset.idx, 10)
+      replQueue.splice(i, 1)
+      renderQueue()
+    })
+  })
+
+  updateSpaceCalc()
+}
+
+function updateSpaceCalc () {
+  let total = 0
+  for (const item of replQueue) {
+    total += item.size * item.n
+  }
+  $('repl-space-info').hidden = replQueue.length === 0
+  $('replSpaceCalc').textContent = formatBytes(total)
 }
 
 /* ── file replication ────────────────────────────────────────────────── */
 
-function handleFilePick (e) {
-  const file = e.target.files && e.target.files[0]
-  if (!file) return
-  replFile = file
-  $('replFileLabel').textContent = file.name + ' (' + formatBytes(file.size) + ')'
-  $('replSendBtn').disabled = false
-}
-
 async function handleReplicate () {
-  if (!replFile) {
-    activity.warn('pick a file first')
-    return
-  }
-  if (!manager.isConfigured()) {
-    activity.warn('configure replication first')
+  if (replQueue.length === 0) {
+    activity.warn('pick files first')
     return
   }
 
   $('replSendBtn').disabled = true
   $('replSendBtn').textContent = 'Replicating…'
+  $('replPickBtn').disabled = true
+  $('replPickFolderBtn').disabled = true
 
   try {
-    const buf = await readFileAsBuffer(replFile)
-    const result = await pushFileFromBuffer(replFile.name, buf)
-    activity.info('replication complete: ' + result.distributed + '/' + result.total + ' shards')
+    let totalDistributed = 0
+    let totalShards = 0
+
+    for (const item of replQueue) {
+      const buf = await readFileAsBuffer(item.file)
+      const result = await pushFileFromBuffer(item.name, buf, item.n)
+      totalDistributed += result.distributed
+      totalShards += result.total
+    }
+
+    activity.info('replication complete: ' + totalDistributed + '/' + totalShards + ' shards across ' + replQueue.length + ' file(s)')
+    replQueue.length = 0
+    renderQueue()
     refreshFileList()
     refreshHealth()
+    refreshSpaceInfo()
   } catch (err) {
     activity.error('replication error: ' + err.message)
   } finally {
-    $('replSendBtn').disabled = false
-    $('replSendBtn').textContent = 'Replicate'
+    $('replSendBtn').disabled = replQueue.length === 0
+    $('replSendBtn').textContent = 'Replicate All'
+    $('replPickBtn').disabled = false
+    $('replPickFolderBtn').disabled = false
   }
 }
 
@@ -140,26 +203,14 @@ async function handleRetrieve () {
   }
 }
 
-/* ── agreements ──────────────────────────────────────────────────────── */
-
-async function handleRequestAgreements () {
-  if (!manager.isConfigured()) {
-    activity.warn('configure replication first')
-    return
-  }
-  try {
-    await manager.requestAgreements()
-  } catch (err) {
-    activity.error('agreement error: ' + err.message)
-  }
-}
+/* ── agreements (read-only display) ──────────────────────────────────── */
 
 async function refreshAgreements () {
   const container = $('repl-agreements')
   try {
     const agreements = await manager.getOwnerAgreements()
     if (agreements.length === 0) {
-      container.innerHTML = '<div class="placeholder">No agreements yet</div>'
+      container.innerHTML = '<div class="placeholder">No storage peers yet</div>'
       return
     }
 
@@ -173,7 +224,7 @@ async function refreshAgreements () {
         '</div>'
     }).join('')
   } catch (err) {
-    container.innerHTML = '<div class="placeholder">Error loading agreements</div>'
+    container.innerHTML = '<div class="placeholder">Error loading peers</div>'
   }
 }
 
@@ -209,6 +260,18 @@ async function refreshHealth () {
   } catch {}
 }
 
+/* ── space info display ──────────────────────────────────────────────── */
+
+async function refreshSpaceInfo () {
+  try {
+    const offered = await manager.computeOfferedBytes()
+    if (offered > 0) {
+      $('repl-space-info').hidden = false
+      $('replSpaceCalc').textContent = formatBytes(offered)
+    }
+  } catch {}
+}
+
 /* ── hosted stats ────────────────────────────────────────────────────── */
 
 async function refreshHosted () {
@@ -234,7 +297,7 @@ async function refreshFileList () {
     for (const f of files) {
       const opt = document.createElement('option')
       opt.value = f.path
-      opt.textContent = f.path + ' (' + formatBytes(f.size) + ')'
+      opt.textContent = f.path + ' (' + formatBytes(f.size) + ', N=' + (f.replicationFactor || '?') + ')'
       select.appendChild(opt)
     }
 
@@ -250,6 +313,7 @@ async function refreshAll () {
   refreshAgreements()
   refreshFileList()
   refreshHosted()
+  refreshSpaceInfo()
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -278,6 +342,10 @@ function downloadToUser (data, filename) {
 function truncatePath (p) {
   if (p.length <= 28) return p
   return '…' + p.slice(-27)
+}
+
+function escHtml (s) {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function formatBytes (bytes) {

@@ -11,6 +11,7 @@ import { attachReplicationChannel } from './replication-protocol.js'
 
 let swarm = null
 let joined = false
+let replicationPoolJoined = false
 
 // remoteKeyHex -> { drive, watcher, connPeerId }
 const peers = new Map()
@@ -149,6 +150,23 @@ export function joinTopic (code) {
 
 export function isJoined () {
   return joined
+}
+
+/**
+ * Auto-join a well-known replication pool topic so all replication
+ * peers discover each other without manual topic entry.
+ */
+export function joinReplicationPool () {
+  if (replicationPoolJoined) return
+  const topic = cryptoLib.hash(b4a.from('p2p-storage:replication-pool'))
+  activity.info('joining replication pool ' + b4a.toString(topic, 'hex').slice(0, 16) + '…')
+  swarm.join(topic, { client: true, server: true })
+  replicationPoolJoined = true
+  activity.info('replication pool joined – peers will connect automatically')
+}
+
+export function isReplicationPoolJoined () {
+  return replicationPoolJoined
 }
 
 export function getPeers () {

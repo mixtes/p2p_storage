@@ -299,6 +299,44 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
   letter-spacing: .5px; color: #4ade80;
 }
 
+/* Replication queue */
+.repl-queue {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 240px; overflow-y: auto;
+}
+.repl-queue-item {
+  display: flex; align-items: center; gap: 8px;
+  background: #1c2230;
+  border: 1px solid #2c3344;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.repl-queue-name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: #c4d0ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.repl-queue-size {
+  color: #8a93a6; font-size: 11px; white-space: nowrap;
+}
+.repl-queue-n-label {
+  color: #8a93a6; font-size: 11px;
+}
+.repl-queue-n {
+  width: 48px; flex: none;
+  background: #151a26; border: 1px solid #353c52; border-radius: 4px;
+  padding: 3px 5px; color: #E6E6E6; font-size: 12px; text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.repl-queue-n:focus { outline: none; border-color: #5b8def; }
+.repl-queue-remove {
+  background: none; border: none; color: #ff6b6b; cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 4px;
+}
+.repl-queue-remove:hover { color: #ff4444; }
+
 /* Retrieve dropdown */
 #replRetrieveSelect {
   flex: 1; min-width: 0;

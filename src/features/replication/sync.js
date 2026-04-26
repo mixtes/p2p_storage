@@ -16,8 +16,9 @@ import { replicateFile, retrieveFile, getReplicatedFiles } from './manager.js'
  * Replicate a file from the local Hyperdrive.
  *
  * @param {string} drivePath - path inside the local Hyperdrive (e.g. '/photos/cat.jpg')
+ * @param {number} replicationFactor - per-file N
  */
-export async function pushFileFromDrive (drivePath) {
+export async function pushFileFromDrive (drivePath, replicationFactor) {
   const drive = getLocalDrive()
   const data = await drive.get(drivePath)
 
@@ -26,7 +27,7 @@ export async function pushFileFromDrive (drivePath) {
   }
 
   activity.info('replicating from drive: ' + drivePath + ' (' + formatSize(data.length) + ')')
-  return replicateFile(drivePath, data)
+  return replicateFile(drivePath, data, replicationFactor)
 }
 
 /**
@@ -34,11 +35,12 @@ export async function pushFileFromDrive (drivePath) {
  *
  * @param {string} fileName - logical name for tracking
  * @param {Buffer|ArrayBuffer|Uint8Array} rawData
+ * @param {number} replicationFactor - per-file N
  */
-export async function pushFileFromBuffer (fileName, rawData) {
+export async function pushFileFromBuffer (fileName, rawData, replicationFactor) {
   const buf = b4a.from(rawData)
   activity.info('replicating file: ' + fileName + ' (' + formatSize(buf.length) + ')')
-  return replicateFile(fileName, buf)
+  return replicateFile(fileName, buf, replicationFactor)
 }
 
 /**
@@ -70,6 +72,28 @@ export async function pullFileToDrive (filePath, destPath) {
 }
 
 /**
+ * Replicate multiple raw files (e.g. from a folder input or multi-file picker).
+ *
+ * @param {Array<{ name: string, data: Buffer|Uint8Array }>} files
+ * @param {number} replicationFactor - N for all files in this batch
+ * @returns {{ total: number, distributed: number, fileCount: number }}
+ */
+export async function pushFolderFromFiles (files, replicationFactor) {
+  let totalDistributed = 0
+  let totalShards = 0
+
+  for (const file of files) {
+    const buf = b4a.from(file.data)
+    activity.info('replicating: ' + file.name + ' (' + formatSize(buf.length) + ')')
+    const result = await replicateFile(file.name, buf, replicationFactor)
+    totalDistributed += result.distributed
+    totalShards += result.total
+  }
+
+  return { distributed: totalDistributed, total: totalShards, fileCount: files.length }
+}
+
+/**
  * Re-sync all replicated files: re-read from drive, re-chunk any that
  * changed, push updated chunks to keepers.
  */
@@ -88,7 +112,7 @@ export async function resyncAll () {
 
       if (current.length !== file.size) {
         activity.info('re-syncing changed file: ' + file.path)
-        await replicateFile(file.path, current)
+        await replicateFile(file.path, current, file.replicationFactor || 1)
         updated++
       }
     } catch (err) {
