@@ -176,9 +176,16 @@ async function refreshOfferStats () {
 /* ── send / store ────────────────────────────────────────────────────── */
 
 function updateStoreBtn () {
+  const btn = $('fsStoreBtn')
   const peers = getConnectedPeers()
   const online = selectedPeer && peers.has(selectedPeer)
-  $('fsStoreBtn').disabled = !(fsFile && selectedPeer && online)
+
+  btn.disabled = !(fsFile && selectedPeer && online)
+
+  if (!fsFile) btn.title = 'Pick a file first'
+  else if (!selectedPeer) btn.title = 'Select a peer first'
+  else if (!online) btn.title = 'Peer is offline (no replication channel) — wait until status shows online'
+  else btn.title = ''
 }
 
 function handleFilePick (e) {
@@ -192,6 +199,10 @@ function handleFilePick (e) {
 async function handleStore () {
   if (!selectedPeer) { activity.warn('select a peer first'); return }
   if (!fsFile) { activity.warn('pick a file first'); return }
+  if (!getConnectedPeers().has(selectedPeer)) {
+    activity.warn('peer ' + selectedPeer.slice(0, 12) + ' is not connected on the replication channel — cannot store')
+    return
+  }
 
   $('fsStoreBtn').disabled = true
   $('fsStoreBtn').textContent = 'Storing…'
