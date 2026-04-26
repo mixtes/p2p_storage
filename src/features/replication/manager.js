@@ -193,6 +193,7 @@ export function createProtocolHandlers () {
 
     [MSG.REJECT_AGREEMENT] (payload, peerId) {
       activity.info('peer ' + peerId + ' rejected agreement: ' + (payload.reason || 'no reason'))
+      emit('agreementChanged', peerId, 'rejected')
     },
 
     /* ── chunk transfer (keeper side) ─────────────────────────────── */
@@ -329,7 +330,8 @@ export async function ensureAgreements (target, replicationFactor, waitMs = 5000
   const picked = candidates.slice(0, needed)
 
   const ownerKey = getPublicKeyHex()
-  const neededPerKeeper = Math.ceil(config.offeredBytes / Math.max(picked.length + activePeers.size, 1))
+  const minOffer = await computeMinOfferedBytes()
+  const neededPerKeeper = Math.ceil(Math.max(minOffer, config.offeredBytes) / Math.max(picked.length + activePeers.size, 1))
   const pickedIds = new Set(picked.map(([peerId]) => peerId))
 
   activity.info('auto-requesting agreements from ' + picked.length + ' random peer(s)')
@@ -337,13 +339,14 @@ export async function ensureAgreements (target, replicationFactor, waitMs = 5000
     requestAgreement(rpc, ownerKey, neededPerKeeper, replicationFactor || 1)
   }
 
+  let responded = 0
   await new Promise((resolve) => {
     let accepted = 0
     const onChange = (peerId, status) => {
-      if (pickedIds.has(peerId) && status === 'active') {
-        accepted++
-        if (accepted >= picked.length) done()
-      }
+      if (!pickedIds.has(peerId)) return
+      responded++
+      if (status === 'active') accepted++
+      if (accepted >= picked.length || responded >= picked.length) done()
     }
     const done = () => {
       const idx = listeners.agreementChanged.indexOf(onChange)
@@ -388,7 +391,7 @@ export async function replicateFile (filePath, fileData, replicationFactor) {
     lastModified: Date.now()
   })
 
-  const keepers = getActiveKeepers()
+  const keepers = await getActiveKeepersAsync()
   if (keepers.length === 0) {
     activity.info('no keepers available — chunks queued locally')
     for (const chunk of chunks) {
@@ -801,8 +804,21 @@ function handleHeartbeat (payload, peerId) {
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-function getActiveKeepers () {
-  return [...connectedPeers.entries()]
+/**
+ * Return only connected peers that have an active agreement with us.
+ * Falls back to scanning the owner manifest for agreement:* entries.
+ */
+async function getActiveKeepersAsync () {
+  const manifest = getOwnerManifest()
+  const keepers = []
+  for await (const node of manifest.createReadStream({ gte: 'agreement:', lt: 'agreement;' })) {
+    if (node.value.status === 'active') {
+      const peerId = node.key.replace('agreement:', '')
+      const rpc = connectedPeers.get(peerId)
+      if (rpc) keepers.push([peerId, rpc])
+    }
+  }
+  return keepers
 }
 
 function getKeeperUsedBytes () {
