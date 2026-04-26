@@ -2,8 +2,10 @@
  * Replication UI
  *
  * DOM bindings for the replication dashboard:
+ *  - Space offering configuration
  *  - Multi-file / folder picker with per-item replication factor (N)
- *  - Auto-calculated space commitment
+ *  - Folder grouping with collapse/expand
+ *  - Auto-calculated minimum space commitment
  *  - Health indicators (per keeper, per file)
  *  - Retrieve selector for previously replicated files
  *  - Storage peers list (auto-managed agreements)
@@ -12,14 +14,20 @@
 
 import { activity } from '../../core/logger.js'
 import * as manager from './manager.js'
-import { pushFileFromBuffer, pushFolderFromFiles, pullFileToBuffer } from './sync.js'
+import { pushFileFromBuffer, pullFileToBuffer } from './sync.js'
 import * as healthMonitor from '../../core/health-monitor.js'
 
 const $ = (id) => document.getElementById(id)
 
+/**
+ * Queue is a flat list but entries can be grouped by folder.
+ * Each entry: { name, size, file, n, folder: string|null }
+ * When folder !== null, entries with the same folder value share one N.
+ */
 const replQueue = []
 
 export function init () {
+  $('replOfferBtn').addEventListener('click', handleSaveOffer)
   $('replPickBtn').addEventListener('click', () => $('replFileInput').click())
   $('replPickFolderBtn').addEventListener('click', () => $('replFolderInput').click())
   $('replFileInput').addEventListener('change', handleFilePick)
@@ -32,7 +40,7 @@ export function init () {
     $('replRetrieveBtn').disabled = !$('replRetrieveSelect').value
   })
 
-  manager.on('configChanged', refreshSpaceInfo)
+  manager.on('configChanged', renderOfferStatus)
   manager.on('agreementChanged', refreshAgreements)
   manager.on('chunkProgress', refreshHealth)
   manager.on('healthChanged', refreshHealth)
@@ -41,7 +49,54 @@ export function init () {
   healthMonitor.on('degraded', refreshHealth)
   healthMonitor.on('recovered', refreshHealth)
 
+  renderOfferStatus()
   refreshAll()
+}
+
+/* ── space offering ──────────────────────────────────────────────────── */
+
+async function handleSaveOffer () {
+  const offerMb = parseInt($('replOffer').value, 10)
+  if (!offerMb || offerMb < 0) {
+    activity.warn('offered space must be 0 or more MB')
+    return
+  }
+
+  const offeredBytes = offerMb * 1024 * 1024
+  const minBytes = await manager.computeMinOfferedBytes()
+
+  if (offeredBytes < minBytes) {
+    activity.warn('offer must be at least ' + formatBytes(minBytes) +
+      ' (your own replication needs)')
+    return
+  }
+
+  try {
+    await manager.configure(offeredBytes)
+    activity.info('space offer saved: ' + formatBytes(offeredBytes))
+  } catch (err) {
+    activity.error('config error: ' + err.message)
+  }
+}
+
+async function renderOfferStatus () {
+  const config = manager.getConfig()
+  if (config) {
+    $('replOfferStatus').textContent = formatBytes(config.offeredBytes)
+    $('replOffer').value = Math.round(config.offeredBytes / (1024 * 1024))
+  } else {
+    $('replOfferStatus').textContent = 'not configured'
+  }
+
+  try {
+    const minBytes = await manager.computeMinOfferedBytes()
+    if (minBytes > 0) {
+      $('repl-min-offer-row').hidden = false
+      $('replMinOffer').textContent = formatBytes(minBytes)
+    } else {
+      $('repl-min-offer-row').hidden = true
+    }
+  } catch {}
 }
 
 /* ── file / folder picking ───────────────────────────────────────────── */
@@ -51,7 +106,7 @@ function handleFilePick (e) {
   if (!files || files.length === 0) return
 
   for (const file of files) {
-    replQueue.push({ name: file.name, size: file.size, file, n: 2 })
+    replQueue.push({ name: file.name, size: file.size, file, n: 2, folder: null })
   }
 
   renderQueue()
@@ -68,7 +123,7 @@ function handleFolderPick (e) {
       folderName = file.webkitRelativePath.split('/')[0]
     }
     const path = file.webkitRelativePath || file.name
-    replQueue.push({ name: path, size: file.size, file, n: 2 })
+    replQueue.push({ name: path, size: file.size, file, n: 2, folder: folderName || null })
   }
 
   if (folderName) {
@@ -84,6 +139,10 @@ function handleClear () {
   renderQueue()
 }
 
+/* ── queue rendering with folder grouping ────────────────────────────── */
+
+const expandedFolders = new Set()
+
 function renderQueue () {
   const container = $('repl-queue')
   const hasItems = replQueue.length > 0
@@ -97,19 +156,108 @@ function renderQueue () {
     return
   }
 
-  container.innerHTML = replQueue.map((item, idx) =>
-    '<div class="repl-queue-item">' +
-      '<span class="repl-queue-name" title="' + escHtml(item.name) + '">' +
-        truncatePath(item.name) +
-      '</span>' +
-      '<span class="repl-queue-size">' + formatBytes(item.size) + '</span>' +
-      '<label class="repl-queue-n-label">N:</label>' +
-      '<input type="number" class="repl-queue-n" min="1" max="10" value="' + item.n + '" data-idx="' + idx + '" />' +
-      '<button class="repl-queue-remove" data-idx="' + idx + '">&times;</button>' +
-    '</div>'
-  ).join('')
+  const folders = new Map()
+  const looseFiles = []
 
-  container.querySelectorAll('.repl-queue-n').forEach(input => {
+  for (let i = 0; i < replQueue.length; i++) {
+    const item = replQueue[i]
+    if (item.folder) {
+      if (!folders.has(item.folder)) {
+        folders.set(item.folder, { indices: [], totalSize: 0, n: item.n })
+      }
+      const g = folders.get(item.folder)
+      g.indices.push(i)
+      g.totalSize += item.size
+    } else {
+      looseFiles.push(i)
+    }
+  }
+
+  let html = ''
+
+  for (const [folderName, group] of folders) {
+    const expanded = expandedFolders.has(folderName)
+    const chevron = expanded ? '&#9662;' : '&#9656;'
+
+    html +=
+      '<div class="repl-queue-folder" data-folder="' + escHtml(folderName) + '">' +
+        '<span class="repl-queue-folder-toggle">' + chevron + '</span>' +
+        '<span class="repl-queue-folder-icon">&#128193;</span>' +
+        '<span class="repl-queue-name">' + escHtml(folderName) + '/</span>' +
+        '<span class="repl-queue-size">' + group.indices.length + ' files, ' + formatBytes(group.totalSize) + '</span>' +
+        '<label class="repl-queue-n-label">N:</label>' +
+        '<input type="number" class="repl-queue-n repl-folder-n" min="1" max="10" value="' + group.n + '" data-folder="' + escHtml(folderName) + '" />' +
+        '<button class="repl-queue-remove repl-folder-remove" data-folder="' + escHtml(folderName) + '">&times;</button>' +
+      '</div>'
+
+    if (expanded) {
+      html += '<div class="repl-queue-folder-children">'
+      for (const idx of group.indices) {
+        const item = replQueue[idx]
+        const shortName = item.name.replace(folderName + '/', '')
+        html +=
+          '<div class="repl-queue-item repl-queue-child">' +
+            '<span class="repl-queue-name" title="' + escHtml(item.name) + '">' + truncatePath(shortName) + '</span>' +
+            '<span class="repl-queue-size">' + formatBytes(item.size) + '</span>' +
+          '</div>'
+      }
+      html += '</div>'
+    }
+  }
+
+  for (const idx of looseFiles) {
+    const item = replQueue[idx]
+    html +=
+      '<div class="repl-queue-item">' +
+        '<span class="repl-queue-name" title="' + escHtml(item.name) + '">' + truncatePath(item.name) + '</span>' +
+        '<span class="repl-queue-size">' + formatBytes(item.size) + '</span>' +
+        '<label class="repl-queue-n-label">N:</label>' +
+        '<input type="number" class="repl-queue-n" min="1" max="10" value="' + item.n + '" data-idx="' + idx + '" />' +
+        '<button class="repl-queue-remove" data-idx="' + idx + '">&times;</button>' +
+      '</div>'
+  }
+
+  container.innerHTML = html
+
+  container.querySelectorAll('.repl-queue-folder-toggle, .repl-queue-folder-icon, .repl-queue-folder > .repl-queue-name').forEach(el => {
+    el.addEventListener('click', (e) => {
+      const folder = e.target.closest('.repl-queue-folder').dataset.folder
+      if (expandedFolders.has(folder)) {
+        expandedFolders.delete(folder)
+      } else {
+        expandedFolders.add(folder)
+      }
+      renderQueue()
+    })
+  })
+
+  container.querySelectorAll('.repl-folder-n').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const folder = e.target.dataset.folder
+      const val = parseInt(e.target.value, 10)
+      if (val < 1 || val > 10) {
+        e.target.value = replQueue.find(q => q.folder === folder)?.n || 2
+        return
+      }
+      for (const item of replQueue) {
+        if (item.folder === folder) item.n = val
+      }
+      updateSpaceCalc()
+    })
+  })
+
+  container.querySelectorAll('.repl-folder-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const folder = e.target.dataset.folder
+      for (let i = replQueue.length - 1; i >= 0; i--) {
+        if (replQueue[i].folder === folder) replQueue.splice(i, 1)
+      }
+      expandedFolders.delete(folder)
+      renderQueue()
+    })
+  })
+
+  container.querySelectorAll('.repl-queue-n:not(.repl-folder-n)').forEach(input => {
     input.addEventListener('change', (e) => {
       const i = parseInt(e.target.dataset.idx, 10)
       const val = parseInt(e.target.value, 10)
@@ -122,7 +270,7 @@ function renderQueue () {
     })
   })
 
-  container.querySelectorAll('.repl-queue-remove').forEach(btn => {
+  container.querySelectorAll('.repl-queue-remove:not(.repl-folder-remove)').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const i = parseInt(e.target.dataset.idx, 10)
       replQueue.splice(i, 1)
@@ -150,6 +298,11 @@ async function handleReplicate () {
     return
   }
 
+  if (!manager.isConfigured()) {
+    activity.warn('set your space offering first')
+    return
+  }
+
   $('replSendBtn').disabled = true
   $('replSendBtn').textContent = 'Replicating…'
   $('replPickBtn').disabled = true
@@ -166,12 +319,13 @@ async function handleReplicate () {
       totalShards += result.total
     }
 
-    activity.info('replication complete: ' + totalDistributed + '/' + totalShards + ' shards across ' + replQueue.length + ' file(s)')
+    activity.info('replication complete: ' + totalDistributed + '/' + totalShards +
+      ' shards across ' + replQueue.length + ' file(s)')
     replQueue.length = 0
     renderQueue()
     refreshFileList()
     refreshHealth()
-    refreshSpaceInfo()
+    renderOfferStatus()
   } catch (err) {
     activity.error('replication error: ' + err.message)
   } finally {
@@ -245,31 +399,102 @@ async function refreshHealth () {
       return
     }
 
-    container.innerHTML = fileHealth.map(f => {
-      const pct = f.totalChunks > 0 ? Math.round((f.healthy / f.totalChunks) * 100) : 0
-      const barClass =
-        f.status === 'healthy' ? 'bar-green' :
-        f.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+    const grouped = groupHealthByFolder(fileHealth)
+    container.innerHTML = grouped.map(renderHealthEntry).join('')
 
-      return '<div class="file-health-row">' +
-        '<span class="file-health-name" title="' + f.path + '">' + truncatePath(f.path) + '</span>' +
-        '<div class="health-bar"><div class="health-bar-fill ' + barClass + '" style="width:' + pct + '%"></div></div>' +
-        '<span class="file-health-pct">' + pct + '%</span>' +
-        '</div>'
-    }).join('')
+    container.querySelectorAll('.health-folder-toggle').forEach(el => {
+      el.addEventListener('click', () => {
+        const folder = el.dataset.folder
+        if (expandedHealthFolders.has(folder)) {
+          expandedHealthFolders.delete(folder)
+        } else {
+          expandedHealthFolders.add(folder)
+        }
+        refreshHealth()
+      })
+    })
   } catch {}
 }
 
-/* ── space info display ──────────────────────────────────────────────── */
+const expandedHealthFolders = new Set()
 
-async function refreshSpaceInfo () {
-  try {
-    const offered = await manager.computeOfferedBytes()
-    if (offered > 0) {
-      $('repl-space-info').hidden = false
-      $('replSpaceCalc').textContent = formatBytes(offered)
+/**
+ * Group file health entries by folder prefix. Files whose path contains
+ * a "/" are grouped under the first path segment; standalone files stay loose.
+ */
+function groupHealthByFolder (entries) {
+  const folders = new Map()
+  const loose = []
+
+  for (const f of entries) {
+    const slashIdx = f.path.indexOf('/')
+    if (slashIdx > 0) {
+      const folderName = f.path.slice(0, slashIdx)
+      if (!folders.has(folderName)) {
+        folders.set(folderName, { folder: folderName, files: [], totalChunks: 0, healthy: 0, degraded: 0, lost: 0 })
+      }
+      const g = folders.get(folderName)
+      g.files.push(f)
+      g.totalChunks += f.totalChunks
+      g.healthy += f.healthy
+      g.degraded += f.degraded
+      g.lost += f.lost
+    } else {
+      loose.push({ type: 'file', ...f })
     }
-  } catch {}
+  }
+
+  const result = []
+  for (const g of folders.values()) {
+    g.status = g.lost > 0 ? 'critical' : g.degraded > 0 ? 'degraded' : 'healthy'
+    g.type = 'folder'
+    result.push(g)
+  }
+  for (const f of loose) result.push(f)
+  return result
+}
+
+function renderHealthEntry (entry) {
+  if (entry.type === 'folder') {
+    const pct = entry.totalChunks > 0 ? Math.round((entry.healthy / entry.totalChunks) * 100) : 0
+    const barClass = entry.status === 'healthy' ? 'bar-green' : entry.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+    const expanded = expandedHealthFolders.has(entry.folder)
+    const chevron = expanded ? '&#9662;' : '&#9656;'
+
+    let html =
+      '<div class="file-health-row health-folder-toggle" data-folder="' + escHtml(entry.folder) + '" style="cursor:pointer">' +
+        '<span style="width:12px;text-align:center;font-size:10px;color:#8a93a6">' + chevron + '</span>' +
+        '<span style="font-size:14px">&#128193;</span>' +
+        '<span class="file-health-name" title="' + escHtml(entry.folder) + '/">' + escHtml(entry.folder) + '/ (' + entry.files.length + ' files)</span>' +
+        '<div class="health-bar"><div class="health-bar-fill ' + barClass + '" style="width:' + pct + '%"></div></div>' +
+        '<span class="file-health-pct">' + pct + '%</span>' +
+      '</div>'
+
+    if (expanded) {
+      for (const f of entry.files) {
+        const fp = f.totalChunks > 0 ? Math.round((f.healthy / f.totalChunks) * 100) : 0
+        const fbc = f.status === 'healthy' ? 'bar-green' : f.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+        const shortName = f.path.replace(entry.folder + '/', '')
+        html +=
+          '<div class="file-health-row" style="padding-left:36px;font-size:11px">' +
+            '<span class="file-health-name" title="' + escHtml(f.path) + '">' + truncatePath(shortName) + '</span>' +
+            '<div class="health-bar"><div class="health-bar-fill ' + fbc + '" style="width:' + fp + '%"></div></div>' +
+            '<span class="file-health-pct">' + fp + '%</span>' +
+          '</div>'
+      }
+    }
+
+    return html
+  }
+
+  const pct = entry.totalChunks > 0 ? Math.round((entry.healthy / entry.totalChunks) * 100) : 0
+  const barClass = entry.status === 'healthy' ? 'bar-green' : entry.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+
+  return '<div class="file-health-row">' +
+    '<span class="file-health-name" title="' + escHtml(entry.path) + '">' + truncatePath(entry.path) + '</span>' +
+    '<div class="health-bar"><div class="health-bar-fill ' + barClass + '" style="width:' + pct + '%"></div></div>' +
+    '<span class="file-health-pct">' + pct + '%</span>' +
+    '</div>'
 }
 
 /* ── hosted stats ────────────────────────────────────────────────────── */
@@ -313,7 +538,6 @@ async function refreshAll () {
   refreshAgreements()
   refreshFileList()
   refreshHosted()
-  refreshSpaceInfo()
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -340,8 +564,8 @@ function downloadToUser (data, filename) {
 }
 
 function truncatePath (p) {
-  if (p.length <= 28) return p
-  return '…' + p.slice(-27)
+  if (p.length <= 32) return p
+  return '…' + p.slice(-31)
 }
 
 function escHtml (s) {

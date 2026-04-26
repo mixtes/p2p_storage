@@ -107,9 +107,41 @@
       <!-- Feature 2: Storage Replication -->
       <div id="view-replication" class="feature-view hidden">
 
+        <!-- Space offering -->
+        <section class="card" id="repl-offer-card">
+          <h2>Space to Offer</h2>
+          <p class="hint">
+            How much disk space you provide for storing other peers&rsquo;
+            encrypted data. Must be at least as much as your own replication
+            needs (shown below). More space = more peers can use you as a keeper.
+          </p>
+          <div class="row" style="margin-bottom:8px">
+            <div class="repl-field">
+              <label for="replOffer">Offer (MB)</label>
+              <input id="replOffer" type="number" min="0" value="512"
+                     style="width:100px;flex:none" />
+            </div>
+            <button id="replOfferBtn">Save</button>
+          </div>
+          <div class="kv">
+            <span>current offer</span>
+            <code id="replOfferStatus">not configured</code>
+          </div>
+          <div class="kv" id="repl-min-offer-row" hidden>
+            <span>minimum (your replication needs)</span>
+            <code id="replMinOffer">0 B</code>
+          </div>
+        </section>
+
         <!-- Health overview -->
         <section class="card" id="repl-health-card">
           <h2>Replication Health</h2>
+          <p class="hint">
+            Keeper status: <strong>online</strong> = responded recently,
+            <strong>degraded</strong> = no response for 30+ min,
+            <strong>offline</strong> = disconnected. Bars show what
+            percentage of each file&rsquo;s chunks are held by online keepers.
+          </p>
 
           <div class="repl-health-row">
             <div class="health-stat">

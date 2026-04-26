@@ -302,7 +302,7 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
 /* Replication queue */
 .repl-queue {
   display: flex; flex-direction: column; gap: 4px;
-  max-height: 240px; overflow-y: auto;
+  max-height: 300px; overflow-y: auto;
 }
 .repl-queue-item {
   display: flex; align-items: center; gap: 8px;
@@ -336,6 +336,37 @@ button:disabled { background: #3a4258; cursor: not-allowed; }
   font-size: 16px; line-height: 1; padding: 0 4px;
 }
 .repl-queue-remove:hover { color: #ff4444; }
+
+/* Folder grouping */
+.repl-queue-folder {
+  display: flex; align-items: center; gap: 8px;
+  background: #1e2636;
+  border: 1px solid #3a4460;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: default;
+}
+.repl-queue-folder-toggle {
+  cursor: pointer; color: #8a93a6; font-size: 10px;
+  user-select: none; width: 12px; text-align: center;
+}
+.repl-queue-folder-icon {
+  cursor: pointer; font-size: 14px; user-select: none;
+}
+.repl-queue-folder > .repl-queue-name {
+  cursor: pointer; color: #e0d8ff; font-weight: 500;
+}
+.repl-queue-folder-children {
+  display: flex; flex-direction: column; gap: 2px;
+  padding-left: 24px;
+}
+.repl-queue-child {
+  background: #171c28;
+  border-color: #252c3c;
+  padding: 4px 10px;
+  font-size: 11px;
+}
 
 /* Retrieve dropdown */
 #replRetrieveSelect {

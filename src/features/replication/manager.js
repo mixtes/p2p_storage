@@ -80,7 +80,8 @@ export async function init () {
 
 /**
  * Initialise or refresh the replication config.
- * offeredBytes is auto-computed from per-file replication needs.
+ *
+ * @param {number} offeredBytes - explicit space the user offers to other peers
  */
 export async function configure (offeredBytes) {
   const manifest = getOwnerManifest()
@@ -101,9 +102,9 @@ export async function configure (offeredBytes) {
 }
 
 /**
- * Recalculate offeredBytes from all replicated files' sizes and per-file N.
+ * Minimum space this peer must offer: sum(fileSize * N) for own replication.
  */
-export async function computeOfferedBytes () {
+export async function computeMinOfferedBytes () {
   const manifest = getOwnerManifest()
   let total = 0
   for await (const node of manifest.createReadStream({ gte: 'file:', lt: 'file;' })) {
@@ -114,16 +115,16 @@ export async function computeOfferedBytes () {
 }
 
 /**
- * Ensure config exists (create with zero offer if first run), then
- * auto-update offeredBytes from manifest.
+ * Ensure config exists. If none, create with the given or zero offer.
+ * If offeredBytes is below the minimum (own replication needs), bump it.
  */
 export async function ensureConfigured () {
   if (!config) {
     await configure(0)
   }
-  const offered = await computeOfferedBytes()
-  if (offered !== config.offeredBytes) {
-    await configure(offered)
+  const minOffer = await computeMinOfferedBytes()
+  if (config.offeredBytes < minOffer) {
+    await configure(minOffer)
   }
 }
 
@@ -462,12 +463,12 @@ async function revokeExcessReplicas (filePath, chunks, oldN, newN) {
 }
 
 /**
- * Recalculate and persist offeredBytes from the manifest.
+ * After replication, ensure offeredBytes is at least the new minimum.
  */
 async function recalcOfferedBytes () {
-  const offered = await computeOfferedBytes()
-  if (config && offered !== config.offeredBytes) {
-    await configure(offered)
+  const minOffer = await computeMinOfferedBytes()
+  if (config && config.offeredBytes < minOffer) {
+    await configure(minOffer)
   }
 }
 
@@ -535,11 +536,13 @@ export async function retrieveFile (filePath) {
 async function handleAgreementRequest (payload, peerId) {
   if (!config) {
     const rpc = connectedPeers.get(peerId)
-    if (rpc) rejectAgreement(rpc, 'replication not configured')
+    if (rpc) rejectAgreement(rpc, 'no storage offered — configure space to offer first')
+    activity.info('rejected agreement from ' + peerId + ': no storage configured yet')
     return
   }
 
-  const freeBytes = config.offeredBytes - getKeeperUsedBytes()
+  const usedBytes = await getKeeperUsedBytesAsync()
+  const freeBytes = config.offeredBytes - usedBytes
   const rpc = connectedPeers.get(peerId)
 
   if (payload.neededBytes > freeBytes) {
