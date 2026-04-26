@@ -6,6 +6,7 @@ import { uploadToFriend, downloadFromFriend } from './sync.js'
 const $ = (id) => document.getElementById(id)
 
 let fsFile = null
+let selectedFriend = null // { publicKey, label }
 
 export function init () {
   // Sub-tabs
@@ -22,31 +23,42 @@ export function init () {
     if (e.key === 'Escape') toggleAddFriendForm(false)
   })
 
-  manager.on('friendsChanged', refreshFriendsList)
+  // Detail panel back button
+  $('fsDeselectBtn').addEventListener('click', () => selectFriend(null))
 
-  // Offer side
+  // Offer (global)
   $('fsOfferBtn').addEventListener('click', handleSaveOffer)
 
-  // Request side
+  // Send / file pick
   $('fsPickBtn').addEventListener('click', () => $('fsFileInput').click())
   $('fsFileInput').addEventListener('change', handleFilePick)
-  $('fsPeerSelect').addEventListener('change', updateStoreBtn)
   $('fsStoreBtn').addEventListener('click', handleStore)
-  $('fsRetrieveBtn').addEventListener('click', handleRetrieve)
-  $('fsRetrieveSelect').addEventListener('change', () => {
-    $('fsRetrieveBtn').disabled = !$('fsRetrieveSelect').value
-  })
 
   manager.on('offerChanged', refreshOfferStats)
-  manager.on('stored', () => { refreshStoredFiles(); refreshPeerList(); refreshLendingList() })
-  manager.on('retrieved', refreshStoredFiles)
+  manager.on('friendsChanged', () => {
+    refreshFriendsList()
+    if (selectedFriend) refreshFriendDetail()
+  })
+  manager.on('stored', () => {
+    refreshOfferStats()
+    refreshFriendsList()
+    if (selectedFriend) refreshFriendDetail()
+  })
+  manager.on('retrieved', () => {
+    if (selectedFriend) refreshFriendDetail()
+  })
 
   refreshOfferStats()
-  refreshPeerList()
-  refreshStoredFiles()
-  refreshLendingList()
   refreshFriendsList()
 }
+
+// Allow external callers (peer connect/disconnect) to refresh friend states.
+export function refreshPeerList () {
+  refreshFriendsList()
+  if (selectedFriend) refreshFriendDetail()
+}
+
+/* ── friends list ────────────────────────────────────────────────────── */
 
 function toggleAddFriendForm (show) {
   $('fsAddFriendForm').classList.toggle('hidden', !show)
@@ -82,7 +94,9 @@ async function refreshFriendsList () {
       const online = peers.has(f.publicKey)
       const dot = online ? 'health-green' : 'health-red'
       const name = f.label ? escapeHtml(f.label) : 'peer ' + f.publicKey.slice(0, 12)
-      return '<div class="agreement-card">' +
+      const isSelected = selectedFriend && selectedFriend.publicKey === f.publicKey
+      return '<div class="agreement-card fs-friend-row' + (isSelected ? ' selected' : '') +
+          '" data-fs-friend="' + f.publicKey + '">' +
         '<span class="health-dot ' + dot + '"></span>' +
         '<span class="agreement-peer">' + name + '</span>' +
         '<span class="agreement-detail" title="' + f.publicKey + '">' +
@@ -91,31 +105,104 @@ async function refreshFriendsList () {
         '<button class="btn-small" data-fs-remove-friend="' + f.publicKey + '">Remove</button>' +
         '</div>'
     }).join('')
+
+    for (const row of list.querySelectorAll('[data-fs-friend]')) {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-fs-remove-friend]')) return
+        const key = row.dataset.fsFriend
+        const friend = friends.find(x => x.publicKey === key)
+        if (friend) selectFriend(friend)
+      })
+    }
     for (const btn of list.querySelectorAll('[data-fs-remove-friend]')) {
-      btn.addEventListener('click', () => manager.removeFriend(btn.dataset.fsRemoveFriend))
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        const key = btn.dataset.fsRemoveFriend
+        await manager.removeFriend(key)
+        if (selectedFriend && selectedFriend.publicKey === key) selectFriend(null)
+      })
     }
   } catch {
     list.innerHTML = '<div class="placeholder">Error loading friends</div>'
   }
 }
 
-function escapeHtml (s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]))
+/* ── friend selection / detail ───────────────────────────────────────── */
+
+function selectFriend (friend) {
+  selectedFriend = friend
+  $('fs-friend-detail').classList.toggle('hidden', !friend)
+  refreshFriendsList()
+  if (friend) {
+    const name = friend.label || ('peer ' + friend.publicKey.slice(0, 12))
+    $('fs-detail-name').textContent = name
+    $('fs-detail-key').textContent = friend.publicKey
+    refreshFriendDetail()
+  } else {
+    fsFile = null
+    $('fsFileLabel').textContent = '(none selected)'
+    $('fsFileInput').value = ''
+  }
 }
 
 function switchSubtab (subtab) {
   for (const btn of document.querySelectorAll('[data-fs-subtab]')) {
     btn.classList.toggle('active', btn.dataset.fsSubtab === subtab)
   }
-  $('fs-pane-lending').classList.toggle('hidden', subtab !== 'lending')
-  $('fs-pane-borrowing').classList.toggle('hidden', subtab !== 'borrowing')
-  if (subtab === 'lending') refreshLendingList()
-  if (subtab === 'borrowing') { refreshPeerList(); refreshStoredFiles() }
+  $('fs-pane-lend').classList.toggle('hidden', subtab !== 'lend')
+  $('fs-pane-borrow').classList.toggle('hidden', subtab !== 'borrow')
 }
 
-/* ── offer side ──────────────────────────────────────────────────────── */
+async function refreshFriendDetail () {
+  if (!selectedFriend) return
+  const peers = getConnectedPeers()
+  const online = peers.has(selectedFriend.publicKey)
+  $('fs-friend-conn-status').textContent = online ? 'online' : 'offline'
+  updateStoreBtn()
+
+  // Lend side: how much this friend uses of MY space
+  try {
+    const lent = await manager.getHostedByFriend()
+    const entry = lent.find(e => e.ownerId === selectedFriend.publicKey)
+    $('fs-friend-lent-bytes').textContent = formatBytes(entry ? entry.bytes : 0)
+    $('fs-friend-lent-files').textContent = String(entry ? entry.fileCount : 0)
+  } catch {}
+
+  // Borrow side: files I have at THIS friend
+  await refreshStoredAtFriend()
+}
+
+async function refreshStoredAtFriend () {
+  const list = $('fs-stored-list')
+  if (!list || !selectedFriend) return
+  try {
+    const files = (await manager.getStoredFiles())
+      .filter(f => f.friendPeerId === selectedFriend.publicKey)
+    const peers = getConnectedPeers()
+    const online = peers.has(selectedFriend.publicKey)
+
+    if (!files.length) {
+      list.innerHTML = '<div class="placeholder">No files stored with this friend yet</div>'
+      return
+    }
+    list.innerHTML = files.map(f => {
+      const name = escapeHtml(f.filePath || f.fileId.slice(0, 12))
+      return '<div class="agreement-card">' +
+        '<span class="agreement-peer">' + name + '</span>' +
+        '<span class="agreement-detail">' + formatBytes(f.size) + '</span>' +
+        '<button class="btn-small" data-fs-retrieve="' + f.fileId + '"' +
+          (online ? '' : ' disabled') + '>Retrieve</button>' +
+        '</div>'
+    }).join('')
+    for (const btn of list.querySelectorAll('[data-fs-retrieve]')) {
+      btn.addEventListener('click', () => handleRetrieve(btn.dataset.fsRetrieve, btn))
+    }
+  } catch {
+    list.innerHTML = '<div class="placeholder">Error loading files</div>'
+  }
+}
+
+/* ── offer (global) ──────────────────────────────────────────────────── */
 
 async function handleSaveOffer () {
   const mb = parseInt($('fsOfferMb').value, 10)
@@ -140,61 +227,12 @@ async function refreshOfferStats () {
   } catch {}
 }
 
-async function refreshLendingList () {
-  const list = $('fs-lending-list')
-  if (!list) return
-  try {
-    const lent = await manager.getHostedByFriend()
-    const peers = getConnectedPeers()
-    if (!lent.length) {
-      list.innerHTML = '<div class="placeholder">No friends are using your space yet</div>'
-      return
-    }
-    list.innerHTML = lent.map(({ ownerId, bytes, fileCount }) => {
-      const online = peers.has(ownerId)
-      const dot = online ? 'health-green' : 'health-red'
-      return '<div class="agreement-card">' +
-        '<span class="health-dot ' + dot + '"></span>' +
-        '<span class="agreement-peer">peer ' + ownerId.slice(0, 12) + '</span>' +
-        '<span class="agreement-detail">' + formatBytes(bytes) + ' · ' +
-          fileCount + ' file' + (fileCount !== 1 ? 's' : '') + '</span>' +
-        '<span class="agreement-status">' + (online ? 'online' : 'offline') + '</span>' +
-        '</div>'
-    }).join('')
-  } catch {
-    list.innerHTML = '<div class="placeholder">Error loading lending data</div>'
-  }
-}
-
-/* ── request side: peer list ─────────────────────────────────────────── */
-
-export function refreshPeerList () {
-  const select = $('fsPeerSelect')
-  const current = select.value
-  const peers = getConnectedPeers()
-
-  if (peers.size === 0) {
-    select.innerHTML = '<option value="">-- no peers connected --</option>'
-    $('fsStoreBtn').disabled = true
-    return
-  }
-
-  select.innerHTML = '<option value="">-- select a friend --</option>'
-  for (const [peerId] of peers) {
-    const opt = document.createElement('option')
-    opt.value = peerId
-    opt.textContent = 'peer ' + peerId.slice(0, 12)
-    select.appendChild(opt)
-  }
-
-  if (current) select.value = current
-  updateStoreBtn()
-}
-
-/* ── request side: store ─────────────────────────────────────────────── */
+/* ── send / store ────────────────────────────────────────────────────── */
 
 function updateStoreBtn () {
-  $('fsStoreBtn').disabled = !(fsFile && $('fsPeerSelect').value)
+  const peers = getConnectedPeers()
+  const online = selectedFriend && peers.has(selectedFriend.publicKey)
+  $('fsStoreBtn').disabled = !(fsFile && selectedFriend && online)
 }
 
 function handleFilePick (e) {
@@ -206,8 +244,7 @@ function handleFilePick (e) {
 }
 
 async function handleStore () {
-  const peerId = $('fsPeerSelect').value
-  if (!peerId) { activity.warn('select a friend peer first'); return }
+  if (!selectedFriend) { activity.warn('select a friend first'); return }
   if (!fsFile) { activity.warn('pick a file first'); return }
 
   $('fsStoreBtn').disabled = true
@@ -215,99 +252,41 @@ async function handleStore () {
 
   try {
     const buf = await readFileAsBuffer(fsFile)
-    await uploadToFriend(peerId, fsFile.name, buf)
+    await uploadToFriend(selectedFriend.publicKey, fsFile.name, buf)
     fsFile = null
     $('fsFileLabel').textContent = '(none selected)'
     $('fsFileInput').value = ''
-    await refreshStoredFiles()
+    await refreshFriendDetail()
   } catch (err) {
     activity.error('friend-store error: ' + err.message)
   } finally {
     $('fsStoreBtn').textContent = 'Store with Friend'
-    $('fsStoreBtn').disabled = true
+    updateStoreBtn()
   }
 }
 
-/* ── request side: retrieve ──────────────────────────────────────────── */
+/* ── retrieve ────────────────────────────────────────────────────────── */
 
-async function handleRetrieve () {
-  const fileId = $('fsRetrieveSelect').value
+async function handleRetrieve (fileId, btn) {
   if (!fileId) return
-
-  $('fsRetrieveBtn').disabled = true
-  $('fsRetrieveBtn').textContent = 'Retrieving…'
-
+  if (btn) { btn.disabled = true; btn.textContent = 'Retrieving…' }
   try {
     const { data, filePath } = await downloadFromFriend(fileId)
     downloadToUser(data, filePath)
   } catch (err) {
     activity.error('friend-retrieve error: ' + err.message)
   } finally {
-    $('fsRetrieveBtn').disabled = false
-    $('fsRetrieveBtn').textContent = 'Retrieve'
-  }
-}
-
-/* ── request side: stored files list ─────────────────────────────────── */
-
-async function refreshStoredFiles () {
-  const select = $('fsRetrieveSelect')
-  const list = $('fs-stored-list')
-  const current = select.value
-
-  try {
-    const files = await manager.getStoredFiles()
-    const peers = getConnectedPeers()
-
-    select.innerHTML = '<option value="">-- select a file --</option>'
-
-    if (files.length === 0) {
-      list.innerHTML = '<div class="placeholder">No files stored with friends yet</div>'
-      $('fsRetrieveBtn').disabled = true
-      return
-    }
-
-    const byFriend = new Map()
-    for (const f of files) {
-      if (!byFriend.has(f.friendPeerId)) byFriend.set(f.friendPeerId, [])
-      byFriend.get(f.friendPeerId).push(f)
-    }
-
-    list.innerHTML = [...byFriend.entries()].map(([peerId, items]) => {
-      const online = peers.has(peerId)
-      const dot = online ? 'health-green' : 'health-red'
-      const total = items.reduce((s, f) => s + (f.size || 0), 0)
-      const header = '<div class="agreement-card">' +
-        '<span class="health-dot ' + dot + '"></span>' +
-        '<span class="agreement-peer">peer ' + peerId.slice(0, 12) + '</span>' +
-        '<span class="agreement-detail">' + formatBytes(total) + ' · ' +
-          items.length + ' file' + (items.length !== 1 ? 's' : '') + '</span>' +
-        '<span class="agreement-status">' + (online ? 'online' : 'offline') + '</span>' +
-        '</div>'
-      const rows = items.map(f =>
-        '<div class="agreement-card" style="margin-left:18px">' +
-          '<span class="agreement-peer">' + (f.filePath || f.fileId.slice(0, 12)) + '</span>' +
-          '<span class="agreement-detail">' + formatBytes(f.size) + '</span>' +
-        '</div>'
-      ).join('')
-      return header + rows
-    }).join('')
-
-    for (const f of files) {
-      const opt = document.createElement('option')
-      opt.value = f.fileId
-      opt.textContent = (f.filePath || f.fileId.slice(0, 12)) + ' (' + formatBytes(f.size) + ')'
-      select.appendChild(opt)
-    }
-
-    if (current) select.value = current
-    $('fsRetrieveBtn').disabled = !select.value
-  } catch {
-    list.innerHTML = '<div class="placeholder">Error loading files</div>'
+    if (btn) { btn.disabled = false; btn.textContent = 'Retrieve' }
   }
 }
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
+
+function escapeHtml (s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]))
+}
 
 function readFileAsBuffer (file) {
   return new Promise((resolve, reject) => {

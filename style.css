@@ -125,6 +125,13 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .fs-pane { display: flex; flex-direction: column; gap: 14px; }
 .fs-pane.hidden { display: none; }
 
+#fs-friend-detail { display: flex; flex-direction: column; gap: 14px; }
+#fs-friend-detail.hidden { display: none; }
+
+.fs-friend-row { cursor: pointer; transition: background .12s, border-color .12s; }
+.fs-friend-row:hover { background: #262c3a; }
+.fs-friend-row.selected { border-color: #5b8def; background: #262c3a; }
+
 main {
   padding: 0 20px 16px;
   display: flex;

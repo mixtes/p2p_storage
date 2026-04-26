@@ -248,91 +248,99 @@
           </div>
         </section>
 
-        <nav class="subtab-bar">
-          <button class="subtab-btn active" data-fs-subtab="lending">Lending</button>
-          <button class="subtab-btn" data-fs-subtab="borrowing">Borrowing</button>
-        </nav>
+        <!-- Global offer setting -->
+        <section class="card">
+          <h2>Offer Memory</h2>
+          <p class="hint">
+            Set how much of your disk you are willing to lend to friends.
+            Connected peers can then offload encrypted files to you &mdash;
+            you hold the blobs but cannot read them.
+          </p>
+          <div class="row" style="margin-bottom:8px">
+            <div class="repl-field">
+              <label for="fsOfferMb">Space to offer (MB)</label>
+              <input id="fsOfferMb" type="number" min="0" value="0"
+                     style="width:100px;flex:none" />
+            </div>
+            <button id="fsOfferBtn">Save</button>
+          </div>
+          <div class="kv">
+            <span>status</span>
+            <code id="fsOfferStatus">Not offering any space yet</code>
+          </div>
+        </section>
 
-        <!-- Lending pane: space I lend to each friend -->
-        <div id="fs-pane-lending" class="fs-pane">
+        <!-- Per-friend detail (visible only after a friend is selected) -->
+        <div id="fs-friend-detail" class="hidden">
 
           <section class="card">
-            <h2>Offer Memory</h2>
-            <p class="hint">
-              Set how much of your disk you are willing to lend to friends.
-              Connected peers can then offload encrypted files to you &mdash;
-              you hold the blobs but cannot read them.
-            </p>
-            <div class="row" style="margin-bottom:8px">
-              <div class="repl-field">
-                <label for="fsOfferMb">Space to offer (MB)</label>
-                <input id="fsOfferMb" type="number" min="0" value="0"
-                       style="width:100px;flex:none" />
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <div>
+                <h2 id="fs-detail-name" style="margin:0">Friend</h2>
+                <code id="fs-detail-key" style="font-size:11px;color:#8a93a6">&hellip;</code>
               </div>
-              <button id="fsOfferBtn">Save</button>
-            </div>
-            <div class="kv">
-              <span>status</span>
-              <code id="fsOfferStatus">Not offering any space yet</code>
+              <button id="fsDeselectBtn" class="btn-small" type="button">← Back to friends</button>
             </div>
           </section>
 
-          <section class="card">
-            <h2>Lent To Friends</h2>
-            <p class="hint">
-              How much of your offered space each friend is currently using.
-            </p>
-            <div id="fs-lending-list" class="repl-agreements">
-              <div class="placeholder">No friends are using your space yet</div>
-            </div>
-          </section>
+          <nav class="subtab-bar">
+            <button class="subtab-btn active" data-fs-subtab="lend">Lend Space</button>
+            <button class="subtab-btn" data-fs-subtab="borrow">Borrow Space</button>
+          </nav>
 
-        </div>
+          <!-- Lend pane: space I lend to THIS friend -->
+          <div id="fs-pane-lend" class="fs-pane">
+            <section class="card">
+              <h2>Space This Friend Uses</h2>
+              <p class="hint">
+                How much of your offered space this friend is currently using
+                on your device.
+              </p>
+              <div class="kv">
+                <span>used</span>
+                <code id="fs-friend-lent-bytes">0 B</code>
+              </div>
+              <div class="kv">
+                <span>files hosted</span>
+                <code id="fs-friend-lent-files">0</code>
+              </div>
+            </section>
+          </div>
 
-        <!-- Borrowing pane: space and files I have at friends -->
-        <div id="fs-pane-borrowing" class="fs-pane hidden">
+          <!-- Borrow pane: files I have stored at THIS friend -->
+          <div id="fs-pane-borrow" class="fs-pane hidden">
+            <section class="card">
+              <h2>Send to this Friend</h2>
+              <p class="hint">
+                Send an encrypted file to this friend for safekeeping. Only you
+                can decrypt it &mdash; no local copy is kept after the transfer.
+              </p>
+              <div class="row" style="margin-bottom:8px">
+                <button id="fsPickBtn" type="button">Choose file&hellip;</button>
+                <button id="fsStoreBtn" class="btn-blue" disabled>Store with Friend</button>
+              </div>
+              <div class="kv">
+                <span>file to store</span>
+                <code id="fsFileLabel">(none selected)</code>
+              </div>
+              <div class="kv">
+                <span>friend status</span>
+                <code id="fs-friend-conn-status">offline</code>
+              </div>
+              <input id="fsFileInput" type="file" hidden />
+            </section>
 
-          <section class="card">
-            <h2>Send to a Friend</h2>
-            <p class="hint">
-              Send an encrypted file to a friend for safekeeping. Only you can
-              decrypt it &mdash; no local copy is kept after the transfer.
-            </p>
-
-            <div class="kv">
-              <span>send to</span>
-              <select id="fsPeerSelect">
-                <option value="">-- no peers connected --</option>
-              </select>
-            </div>
-
-            <div class="row" style="margin-bottom:8px">
-              <button id="fsPickBtn" type="button">Choose file&hellip;</button>
-              <button id="fsStoreBtn" disabled>Store with Friend</button>
-            </div>
-            <div class="kv">
-              <span>file to store</span>
-              <code id="fsFileLabel">(none selected)</code>
-            </div>
-            <input id="fsFileInput" type="file" hidden />
-          </section>
-
-          <section class="card">
-            <h2>Stored at Friends</h2>
-            <p class="hint">
-              Files you have offloaded, grouped by friend. Pick one and
-              retrieve to fetch &amp; decrypt it back to your device.
-            </p>
-            <div class="row">
-              <select id="fsRetrieveSelect">
-                <option value="">-- select a file --</option>
-              </select>
-              <button id="fsRetrieveBtn" disabled>Retrieve</button>
-            </div>
-            <div id="fs-stored-list" class="repl-agreements" style="margin-top:10px">
-              <div class="placeholder">No files stored with friends yet</div>
-            </div>
-          </section>
+            <section class="card">
+              <h2>Stored at this Friend</h2>
+              <p class="hint">
+                Files you have offloaded to this friend. Click Retrieve to
+                fetch &amp; decrypt one back to your device.
+              </p>
+              <div id="fs-stored-list" class="repl-agreements">
+                <div class="placeholder">No files stored with this friend yet</div>
+              </div>
+            </section>
+          </div>
 
         </div>
 
