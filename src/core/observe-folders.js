@@ -3,12 +3,18 @@
  * Observable folders.
  *
  * Mirrors replication events to on-disk folders so the user can
- * verify communication is working without inspecting Hyperbee state:
+ * verify communication is working without inspecting Hyperbee state.
+ *
+ * Encrypted payloads ("_files") are kept separate from JSON metadata
+ * sidecars ("_stubs") so the distinction is visible at a glance:
  *
  *   agreements/        one JSON file per active agreement (both sides)
  *   stashed_files/     encrypted chunks I'm holding for other peers (replication keeper)
+ *   stashed_stubs/     JSON metadata for the entries in stashed_files/
  *   retrieved_files/   files I've pulled back from keepers (replication owner)
+ *   retrieved_stubs/   JSON metadata for the entries in retrieved_files/
  *   rent_files/        encrypted chunks I'm hosting for friends (friend-storage host)
+ *   rent_stubs/        JSON metadata for the entries in rent_files/
  *
  * Uses Localdrive (already a project dependency) so the writes work in
  * the Electron renderer — bare-fs is unavailable here because it needs
@@ -23,8 +29,11 @@ const projectDir = resolveProjectDir()
 
 const agreementsDrive = projectDir ? new Localdrive(projectDir + '/agreements') : null
 const stashedDrive = projectDir ? new Localdrive(projectDir + '/stashed_files') : null
+const stashedStubs = projectDir ? new Localdrive(projectDir + '/stashed_stubs') : null
 const retrievedDrive = projectDir ? new Localdrive(projectDir + '/retrieved_files') : null
+const retrievedStubs = projectDir ? new Localdrive(projectDir + '/retrieved_stubs') : null
 const rentDrive = projectDir ? new Localdrive(projectDir + '/rent_files') : null
+const rentStubs = projectDir ? new Localdrive(projectDir + '/rent_stubs') : null
 
 if (!projectDir) {
   const link = Pear?.app?.applink ?? Pear?.config?.applink ?? '<none>'
@@ -83,15 +92,16 @@ export async function recordAgreement (info) {
 }
 
 /**
- * Save a copy of an incoming chunk (keeper side) to stashed_files/.
+ * Save a copy of an incoming chunk (keeper side). The encrypted payload
+ * lands in stashed_files/ and any JSON metadata in stashed_stubs/.
  */
 export async function stashIncomingFile (filename, data, meta = {}) {
   if (!stashedDrive) return
   try {
     const name = '/' + safeName(filename)
     await stashedDrive.put(name, b4a.from(data))
-    if (meta && Object.keys(meta).length) {
-      await stashedDrive.put(name + '.json', jsonBuf({
+    if (stashedStubs && meta && Object.keys(meta).length) {
+      await stashedStubs.put(name + '.json', jsonBuf({
         ...meta,
         receivedAt: new Date().toISOString(),
         size: data.length
@@ -103,29 +113,32 @@ export async function stashIncomingFile (filename, data, meta = {}) {
 }
 
 /**
- * Save an encrypted chunk received from a friend (friend-storage host side)
- * to rent_files/. One .enc file per chunk + a .json sidecar with metadata.
+ * Save an encrypted chunk received from a friend (friend-storage host side).
+ * The encrypted payload lands in rent_files/, the JSON sidecar in rent_stubs/.
  */
 export async function recordRentFile (fileId, chunkIndex, data, meta = {}) {
   if (!rentDrive) return
   try {
     const base = safeName(fileId.slice(0, 16)) + '_' + chunkIndex
     await rentDrive.put('/' + base + '.enc', b4a.from(data))
-    await rentDrive.put('/' + base + '.json', jsonBuf({
-      ...meta,
-      fileId,
-      chunkIndex,
-      receivedAt: new Date().toISOString(),
-      size: data.length
-    }))
+    if (rentStubs) {
+      await rentStubs.put('/' + base + '.json', jsonBuf({
+        ...meta,
+        fileId,
+        chunkIndex,
+        receivedAt: new Date().toISOString(),
+        size: data.length
+      }))
+    }
   } catch (err) {
     dev.error('[observe] recordRentFile failed:', err.message)
   }
 }
 
 /**
- * Save a retrieved file (owner side, after pulling chunks back) to
- * retrieved_files/.
+ * Save a retrieved file (owner side, after pulling chunks back). The
+ * decrypted payload lands in retrieved_files/, JSON metadata in
+ * retrieved_stubs/.
  */
 export async function recordRetrievedFile (filename, data, meta = {}) {
   if (!retrievedDrive) return
@@ -134,8 +147,8 @@ export async function recordRetrievedFile (filename, data, meta = {}) {
     const stamped = timestamp() + '_' + base
     const name = '/' + stamped
     await retrievedDrive.put(name, b4a.from(data))
-    if (meta && Object.keys(meta).length) {
-      await retrievedDrive.put(name + '.json', jsonBuf({
+    if (retrievedStubs && meta && Object.keys(meta).length) {
+      await retrievedStubs.put(name + '.json', jsonBuf({
         ...meta,
         retrievedAt: new Date().toISOString(),
         size: data.length

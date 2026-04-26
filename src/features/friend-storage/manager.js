@@ -81,21 +81,15 @@ export async function storeWithFriend (friendPeerId, filePath, fileData) {
   const buf = b4a.from(fileData)
   const { chunks, totalSize } = chunkBuffer(buf, filePath, ownerPk)
 
-  const pendingAcks = new Set(chunks.map(c => fileId + ':' + c.index))
-
-  activity.info('friend-store: sending ' + filePath + ' → ' + friendPeerId.slice(0, 12) +
-    ' (' + chunks.length + ' chunk' + (chunks.length !== 1 ? 's' : '') + ')')
-
-  for (const chunk of chunks) {
-    const encrypted = encryptSymmetric(chunk.data, encKey)
-    fsPushFile(rpc, fileId, chunk.index, chunks.length, totalSize, ownerKey, encrypted)
-    emit('progress', { filePath, sent: chunk.index + 1, total: chunks.length })
-  }
-
-  await waitForAcks(pendingAcks, 30000)
+  // Encrypt up front so resends during the ACK wait don't redo the work.
+  const encryptedChunks = chunks.map(c => ({
+    index: c.index,
+    data: encryptSymmetric(c.data, encKey)
+  }))
 
   const manifest = getFriendStorageManifest()
-  await manifest.put('fs-file:' + fileId, {
+  const manifestKey = 'fs-file:' + fileId
+  const manifestBase = {
     filePath,
     size: totalSize,
     chunkCount: chunks.length,
@@ -103,6 +97,49 @@ export async function storeWithFriend (friendPeerId, filePath, fileData) {
     friendPeerId,
     encKeyHex: b4a.toString(encKey, 'hex'),
     storedAt: Date.now()
+  }
+
+  // Persist BEFORE awaiting ACKs. If ACKs are lost the data is still
+  // hosted on the friend; the manifest entry preserves the encryption key
+  // and chunk layout so retrieval can recover it later.
+  await manifest.put(manifestKey, {
+    ...manifestBase,
+    status: 'pending',
+    pendingChunks: chunks.map(c => c.index)
+  })
+
+  activity.info('friend-store: sending ' + filePath + ' → ' + friendPeerId.slice(0, 12) +
+    ' (' + chunks.length + ' chunk' + (chunks.length !== 1 ? 's' : '') + ')')
+
+  const sendChunk = (chunk) => {
+    fsPushFile(rpc, fileId, chunk.index, chunks.length, totalSize, ownerKey, chunk.data)
+  }
+
+  for (const chunk of encryptedChunks) {
+    sendChunk(chunk)
+    emit('progress', { filePath, sent: chunk.index + 1, total: chunks.length })
+  }
+
+  const pendingAcks = new Set(encryptedChunks.map(c => fileId + ':' + c.index))
+
+  try {
+    await waitForAcks(pendingAcks, encryptedChunks, sendChunk, 30000)
+  } catch (err) {
+    const remainingIndexes = [...pendingAcks].map(k => Number(k.split(':')[1]))
+    await manifest.put(manifestKey, {
+      ...manifestBase,
+      status: 'incomplete',
+      pendingChunks: remainingIndexes
+    })
+    activity.warn('friend-store: ' + filePath + ' incomplete (' + remainingIndexes.length +
+      '/' + chunks.length + ' chunks unacknowledged) — entry kept for recovery')
+    throw err
+  }
+
+  await manifest.put(manifestKey, {
+    ...manifestBase,
+    status: 'stored',
+    pendingChunks: []
   })
 
   activity.info('friend-store: ' + filePath + ' stored at ' + friendPeerId.slice(0, 12) +
@@ -163,31 +200,51 @@ export async function getStoredFiles () {
 /* ── keeper side: store incoming chunks ──────────────────────────────── */
 
 async function handleIncomingChunk ({ fileId, chunkIndex, chunkCount, totalSize, ownerKey }, buf, peerId) {
+  const ownerId = ownerKey || peerId
+  const hostedKey = 'fs-hosted:' + ownerId + ':' + fileId + ':' + chunkIndex
+  let stored = false
   try {
-    const drive = await getVaultDrive(ownerKey || peerId)
-    await drive.put('/friend-storage/' + fileId + '/' + chunkIndex + '.enc', buf)
-
     const manifest = getFriendStorageManifest()
-    await manifest.put('fs-hosted:' + (ownerKey || peerId) + ':' + fileId + ':' + chunkIndex, {
-      size: buf.length,
-      storedAt: Date.now()
-    })
+    const existing = await manifest.get(hostedKey)
 
-    await recordRentFile(fileId, chunkIndex, buf, {
-      fromPeer: peerId,
-      ownerKey: ownerKey || peerId,
-      chunkCount,
-      totalSize
-    })
-
-    const rpc = getConnectedPeers().get(peerId)
-    if (rpc) fsFileAck(rpc, fileId, chunkIndex)
-
-    dev.info('[friend-store] stored chunk ' + chunkIndex + '/' + (chunkCount - 1) +
-      ' for file ' + fileId.slice(0, 12))
+    if (!existing) {
+      const drive = await getVaultDrive(ownerId)
+      await drive.put('/friend-storage/' + fileId + '/' + chunkIndex + '.enc', buf)
+      await manifest.put(hostedKey, {
+        size: buf.length,
+        storedAt: Date.now()
+      })
+      await recordRentFile(fileId, chunkIndex, buf, {
+        fromPeer: peerId,
+        ownerKey: ownerId,
+        chunkCount,
+        totalSize
+      })
+      dev.info('[friend-store] stored chunk ' + chunkIndex + '/' + (chunkCount - 1) +
+        ' for file ' + fileId.slice(0, 12))
+    } else {
+      dev.info('[friend-store] re-ack for already-stored chunk ' + chunkIndex +
+        ' of ' + fileId.slice(0, 12))
+    }
+    stored = true
   } catch (err) {
     dev.error('[friend-store] store chunk error:', err)
   }
+
+  // Only ACK once the chunk is durably stored. If we failed, stay silent —
+  // the owner's resend loop will deliver the chunk again.
+  if (stored) sendAckWithRetry(peerId, fileId, chunkIndex)
+}
+
+function sendAckWithRetry (peerId, fileId, chunkIndex, attempt = 0) {
+  const rpc = getConnectedPeers().get(peerId)
+  if (rpc && fsFileAck(rpc, fileId, chunkIndex)) return
+  if (attempt >= 5) {
+    dev.error('[friend-store] gave up sending ack for chunk ' + chunkIndex +
+      ' of ' + fileId.slice(0, 12))
+    return
+  }
+  setTimeout(() => sendAckWithRetry(peerId, fileId, chunkIndex, attempt + 1), 500)
 }
 
 /* ── keeper side: serve retrieval requests ───────────────────────────── */
@@ -217,8 +274,13 @@ function handleRetrieveData ({ fileId, chunkIndex }, buf) {
   retrievalBuffer.set(fileId + ':' + chunkIndex, buf)
 }
 
-function waitForAcks (pendingAcks, timeoutMs) {
+function waitForAcks (pendingAcks, encryptedChunks, sendChunk, timeoutMs) {
   return new Promise((resolve, reject) => {
+    const fileId = pendingAcks.size ? [...pendingAcks][0].split(':')[0] : null
+    const chunksByIndex = new Map(encryptedChunks.map(c => [c.index, c]))
+    const RESEND_INTERVAL = 3000
+    let lastResend = Date.now()
+
     const check = () => {
       for (const key of [...pendingAcks]) {
         if (ackBuffer.has(key)) {
@@ -228,12 +290,24 @@ function waitForAcks (pendingAcks, timeoutMs) {
       }
       if (pendingAcks.size === 0) {
         clearInterval(timer)
+        clearTimeout(deadline)
         resolve()
+        return
+      }
+      if (Date.now() - lastResend >= RESEND_INTERVAL) {
+        lastResend = Date.now()
+        for (const key of pendingAcks) {
+          const idx = Number(key.split(':')[1])
+          const chunk = chunksByIndex.get(idx)
+          if (chunk) sendChunk(chunk)
+        }
+        dev.info('[friend-store] resending ' + pendingAcks.size + ' unacked chunk(s) of ' +
+          (fileId ? fileId.slice(0, 12) : '?'))
       }
     }
     const timer = setInterval(check, 200)
     check()
-    setTimeout(() => {
+    const deadline = setTimeout(() => {
       clearInterval(timer)
       if (pendingAcks.size === 0) resolve()
       else reject(new Error('ACK timeout: ' + pendingAcks.size + ' chunk(s) unacknowledged'))

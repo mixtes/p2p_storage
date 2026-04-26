@@ -2,3 +2,7 @@ node_modules/
 agreements/
 stashed_files/
 retrieved_files/
+rent_files/
+rent_stubs/
+retrieved_stubs/
+stashed_stubs/
