@@ -317,9 +317,12 @@ export async function ensureAgreements (target, replicationFactor, fileSize, wai
   const manifest = getOwnerManifest()
   const activePeers = new Set()
   for await (const node of manifest.createReadStream({ gte: 'agreement:', lt: 'agreement;' })) {
-    if (node.value.status === 'active') {
-      activePeers.add(node.key.replace('agreement:', ''))
-    }
+    if (node.value.status !== 'active') continue
+    const peerId = node.key.replace('agreement:', '')
+    // Only count agreements with peers that are *currently* connected.
+    // Stale agreements from prior sessions would otherwise satisfy `target`
+    // and prevent us from negotiating with online peers.
+    if (connectedPeers.has(peerId)) activePeers.add(peerId)
   }
 
   const needed = target - activePeers.size
@@ -327,7 +330,8 @@ export async function ensureAgreements (target, replicationFactor, fileSize, wai
 
   const candidates = [...connectedPeers.entries()].filter(([peerId]) => !activePeers.has(peerId))
   if (candidates.length === 0) {
-    activity.warn('no peers available for new agreements (need ' + needed + ' more)')
+    activity.warn('no connected peers available for new agreements (need ' + needed + ' more) — ' +
+      'are your friends online and have they joined the replication pool?')
     return 0
   }
 
