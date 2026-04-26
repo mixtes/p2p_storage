@@ -51,6 +51,8 @@ const connectedPeers = new Map()        // peerId -> rpc handle
 const peerCapacities = new Map()        // peerId -> { offeredBytes, usedBytes }
 let pendingBinary = new Map()           // peerId -> { chunkId, chunkIndex, totalSize, [mode] }
 
+const DEFAULT_OFFER_BYTES = 10 * 1024 * 1024  // 10 MB
+
 let config = null                       // { offeredBytes, replicationKeyHex }
 let replicationKey = null               // Buffer, 32 bytes
 let friendStorageHandlers = null        // set by friend-storage feature on init
@@ -120,11 +122,11 @@ export async function computeMinOfferedBytes () {
  */
 export async function ensureConfigured () {
   if (!config) {
-    await configure(0)
+    await configure(DEFAULT_OFFER_BYTES)
   }
   const minOffer = await computeMinOfferedBytes()
   if (config.offeredBytes < minOffer) {
-    await configure(minOffer)
+    await configure(Math.max(minOffer, DEFAULT_OFFER_BYTES))
   }
 }
 
@@ -302,7 +304,13 @@ export async function requestAgreements (replicationFactor) {
  * Picks up to `target` random connected peers without an active agreement
  * and requests one from each, then waits up to `waitMs` for acceptances.
  */
-export async function ensureAgreements (target, replicationFactor, waitMs = 5000) {
+/**
+ * @param {number} target - how many keepers we need
+ * @param {number} replicationFactor - N for this file
+ * @param {number} [fileSize] - size of the file being replicated (for accurate ask)
+ * @param {number} [waitMs] - how long to wait for acceptances
+ */
+export async function ensureAgreements (target, replicationFactor, fileSize, waitMs = 5000) {
   if (!config) await ensureConfigured()
   if (target <= 0) return 0
 
@@ -330,11 +338,12 @@ export async function ensureAgreements (target, replicationFactor, waitMs = 5000
   const picked = candidates.slice(0, needed)
 
   const ownerKey = getPublicKeyHex()
-  const minOffer = await computeMinOfferedBytes()
-  const neededPerKeeper = Math.ceil(Math.max(minOffer, config.offeredBytes) / Math.max(picked.length + activePeers.size, 1))
+  const dataBytes = fileSize || 0
+  const neededPerKeeper = Math.max(dataBytes * replicationFactor, CHUNK_SIZE)
   const pickedIds = new Set(picked.map(([peerId]) => peerId))
 
-  activity.info('auto-requesting agreements from ' + picked.length + ' random peer(s)')
+  activity.info('auto-requesting agreements from ' + picked.length +
+    ' peer(s), asking ' + formatBytes(neededPerKeeper) + ' each')
   for (const [peerId, rpc] of picked) {
     requestAgreement(rpc, ownerKey, neededPerKeeper, replicationFactor || 1)
   }
@@ -372,10 +381,16 @@ export async function replicateFile (filePath, fileData, replicationFactor) {
   if (!replicationFactor || replicationFactor < 1) replicationFactor = 1
 
   await ensureConfigured()
-  await ensureAgreements(replicationFactor, replicationFactor)
+  await ensureAgreements(replicationFactor, replicationFactor, fileData.length)
 
   const ownerPk = getPublicKey()
   const manifest = getOwnerManifest()
+
+  const keepers = await getActiveKeepersAsync()
+  if (keepers.length === 0) {
+    activity.warn('no keepers available — no agreements were accepted')
+    return { distributed: 0, total: 0 }
+  }
 
   const oldNode = await manifest.get('file:' + filePath)
   const oldN = oldNode ? (oldNode.value.replicationFactor || 1) : 0
@@ -390,19 +405,6 @@ export async function replicateFile (filePath, fileData, replicationFactor) {
     replicationFactor,
     lastModified: Date.now()
   })
-
-  const keepers = await getActiveKeepersAsync()
-  if (keepers.length === 0) {
-    activity.info('no keepers available — chunks queued locally')
-    for (const chunk of chunks) {
-      await manifest.put('chunk:' + chunk.id, {
-        filePath, chunkIndex: chunk.index, size: chunk.data.length,
-        keepers: [], status: 'pending'
-      })
-    }
-    await recalcOfferedBytes()
-    return { distributed: 0, total: shards.length }
-  }
 
   let distributed = 0
   for (const shard of shards) {
@@ -538,14 +540,12 @@ export async function retrieveFile (filePath) {
 
 async function handleAgreementRequest (payload, peerId) {
   if (!config) {
-    const rpc = connectedPeers.get(peerId)
-    if (rpc) rejectAgreement(rpc, 'no storage offered — configure space to offer first')
-    activity.info('rejected agreement from ' + peerId + ': no storage configured yet')
-    return
+    await ensureConfigured()
   }
 
-  const usedBytes = await getKeeperUsedBytesAsync()
-  const freeBytes = config.offeredBytes - usedBytes
+  let usedBytes = 0
+  try { usedBytes = await getKeeperUsedBytesAsync() || 0 } catch {}
+  const freeBytes = (config.offeredBytes || 0) - usedBytes
   const rpc = connectedPeers.get(peerId)
 
   if (payload.neededBytes > freeBytes) {

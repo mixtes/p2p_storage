@@ -311,18 +311,41 @@ async function handleReplicate () {
   try {
     let totalDistributed = 0
     let totalShards = 0
+    const failedItems = []
 
-    for (const item of replQueue) {
+    for (let i = 0; i < replQueue.length; i++) {
+      const item = replQueue[i]
       const buf = await readFileAsBuffer(item.file)
       const result = await pushFileFromBuffer(item.name, buf, item.n)
       totalDistributed += result.distributed
       totalShards += result.total
+      if (result.distributed === 0) {
+        failedItems.push(item)
+      }
     }
 
-    activity.info('replication complete: ' + totalDistributed + '/' + totalShards +
-      ' shards across ' + replQueue.length + ' file(s)')
-    replQueue.length = 0
-    renderQueue()
+    if (totalDistributed === 0) {
+      activity.error('replication failed: no peers accepted storage agreements. ' +
+        'Make sure at least one connected peer has configured their space offering. ' +
+        'Files remain in queue — you can retry later.')
+      refreshHealth()
+      renderOfferStatus()
+      return
+    }
+
+    if (failedItems.length > 0) {
+      activity.warn(failedItems.length + ' file(s) could not be distributed — ' +
+        'not enough keepers available. They remain in queue for retry.')
+      replQueue.length = 0
+      for (const item of failedItems) replQueue.push(item)
+      renderQueue()
+    } else {
+      activity.info('replication complete: ' + totalDistributed + '/' + totalShards +
+        ' shards across ' + (replQueue.length - failedItems.length) + ' file(s)')
+      replQueue.length = 0
+      renderQueue()
+    }
+
     refreshFileList()
     refreshHealth()
     renderOfferStatus()
@@ -457,7 +480,7 @@ function groupHealthByFolder (entries) {
 function renderHealthEntry (entry) {
   if (entry.type === 'folder') {
     const pct = entry.totalChunks > 0 ? Math.round((entry.healthy / entry.totalChunks) * 100) : 0
-    const barClass = entry.status === 'healthy' ? 'bar-green' : entry.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+    const barClass = healthBarClass(entry.status)
     const expanded = expandedHealthFolders.has(entry.folder)
     const chevron = expanded ? '&#9662;' : '&#9656;'
 
@@ -473,7 +496,7 @@ function renderHealthEntry (entry) {
     if (expanded) {
       for (const f of entry.files) {
         const fp = f.totalChunks > 0 ? Math.round((f.healthy / f.totalChunks) * 100) : 0
-        const fbc = f.status === 'healthy' ? 'bar-green' : f.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+        const fbc = healthBarClass(f.status)
         const shortName = f.path.replace(entry.folder + '/', '')
         html +=
           '<div class="file-health-row" style="padding-left:36px;font-size:11px">' +
@@ -488,7 +511,7 @@ function renderHealthEntry (entry) {
   }
 
   const pct = entry.totalChunks > 0 ? Math.round((entry.healthy / entry.totalChunks) * 100) : 0
-  const barClass = entry.status === 'healthy' ? 'bar-green' : entry.status === 'degraded' ? 'bar-yellow' : 'bar-red'
+  const barClass = healthBarClass(entry.status)
 
   return '<div class="file-health-row">' +
     '<span class="file-health-name" title="' + escHtml(entry.path) + '">' + truncatePath(entry.path) + '</span>' +
@@ -566,6 +589,13 @@ function downloadToUser (data, filename) {
 function truncatePath (p) {
   if (p.length <= 32) return p
   return '…' + p.slice(-31)
+}
+
+function healthBarClass (status) {
+  if (status === 'healthy') return 'bar-green'
+  if (status === 'degraded' || status === 'partial') return 'bar-yellow'
+  if (status === 'pending') return 'bar-gray'
+  return 'bar-red'
 }
 
 function escHtml (s) {
