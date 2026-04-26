@@ -132,6 +132,21 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .fs-friend-row:hover { background: #262c3a; }
 .fs-friend-row.selected { border-color: #5b8def; background: #262c3a; }
 
+.fs-badge {
+  display: inline-block;
+  background: #5b8def;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+  min-width: 14px;
+  text-align: center;
+}
+.fs-badge.hidden { display: none; }
+#fsRequestsPanel.hidden { display: none; }
+
 main {
   padding: 0 20px 16px;
   display: flex;

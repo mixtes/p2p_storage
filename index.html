@@ -231,18 +231,46 @@
 
         <!-- Trusted friends -->
         <section class="card" id="fs-friends-card">
-          <div class="row" style="justify-content:space-between;align-items:center">
+          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <h2 style="margin:0">Trusted Friends</h2>
-            <button id="fsAddFriendBtn" class="btn-blue btn-small" type="button">+ Add Friend</button>
+            <div class="row" style="gap:6px">
+              <button id="fsAddFriendBtn" class="btn-blue btn-small" type="button">+ Add Friend</button>
+              <button id="fsRequestsBtn" class="btn-small" type="button">
+                Friend Requests <span id="fsRequestsBadge" class="fs-badge hidden">0</span>
+              </button>
+            </div>
           </div>
-          <div id="fsAddFriendForm" class="row hidden" style="margin-top:10px;gap:6px">
-            <input id="fsFriendKeyInput" type="text" placeholder="friend's public key (64 hex chars)"
-                   spellcheck="false" autocomplete="off" style="flex:1;min-width:0" />
-            <input id="fsFriendLabelInput" type="text" placeholder="label (optional)"
-                   style="width:140px;flex:none" />
-            <button id="fsAddFriendConfirmBtn" class="btn-blue btn-small" type="button">Add</button>
-            <button id="fsAddFriendCancelBtn" class="btn-small" type="button">Cancel</button>
+
+          <div id="fsAddFriendForm" class="hidden" style="margin-top:10px">
+            <p class="hint" style="margin:0 0 6px">
+              Enter your friend's public key. They will receive a request and
+              must accept it before you become friends.
+            </p>
+            <div class="row" style="gap:6px">
+              <input id="fsFriendKeyInput" type="text" placeholder="friend's public key (64 hex chars)"
+                     spellcheck="false" autocomplete="off" style="flex:1;min-width:0" />
+              <input id="fsFriendLabelInput" type="text" placeholder="label (optional)"
+                     style="width:140px;flex:none" />
+            </div>
+            <div class="row" style="gap:6px;margin-top:6px">
+              <input id="fsFriendNoteInput" type="text" placeholder="note to send (optional)"
+                     style="flex:1;min-width:0" />
+              <button id="fsAddFriendConfirmBtn" class="btn-blue btn-small" type="button">Send Request</button>
+              <button id="fsAddFriendCancelBtn" class="btn-small" type="button">Cancel</button>
+            </div>
           </div>
+
+          <div id="fsRequestsPanel" class="hidden" style="margin-top:10px">
+            <h3 style="margin:0 0 6px;font-size:13px;color:#c4d0ff">Incoming</h3>
+            <div id="fs-incoming-list" class="repl-agreements">
+              <div class="placeholder">No incoming friend requests</div>
+            </div>
+            <h3 style="margin:14px 0 6px;font-size:13px;color:#c4d0ff">Sent</h3>
+            <div id="fs-outgoing-list" class="repl-agreements">
+              <div class="placeholder">No pending sent requests</div>
+            </div>
+          </div>
+
           <div id="fs-friends-list" class="repl-agreements" style="margin-top:10px">
             <div class="placeholder">No trusted friends yet</div>
           </div>

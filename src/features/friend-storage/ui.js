@@ -14,13 +14,26 @@ export function init () {
     btn.addEventListener('click', () => switchSubtab(btn.dataset.fsSubtab))
   }
 
-  // Add Friend
-  $('fsAddFriendBtn').addEventListener('click', () => toggleAddFriendForm(true))
+  // Add Friend / Send Request
+  $('fsAddFriendBtn').addEventListener('click', () => {
+    toggleRequestsPanel(false)
+    toggleAddFriendForm(!$('fsAddFriendForm').classList.contains('hidden') ? false : true)
+  })
   $('fsAddFriendCancelBtn').addEventListener('click', () => toggleAddFriendForm(false))
-  $('fsAddFriendConfirmBtn').addEventListener('click', handleAddFriend)
+  $('fsAddFriendConfirmBtn').addEventListener('click', handleSendRequest)
   $('fsFriendKeyInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleAddFriend()
+    if (e.key === 'Enter') handleSendRequest()
     if (e.key === 'Escape') toggleAddFriendForm(false)
+  })
+  $('fsFriendNoteInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleSendRequest()
+    if (e.key === 'Escape') toggleAddFriendForm(false)
+  })
+
+  // Friend Requests panel
+  $('fsRequestsBtn').addEventListener('click', () => {
+    toggleAddFriendForm(false)
+    toggleRequestsPanel(!$('fsRequestsPanel').classList.contains('hidden') ? false : true)
   })
 
   // Detail panel back button
@@ -35,8 +48,10 @@ export function init () {
   $('fsStoreBtn').addEventListener('click', handleStore)
 
   manager.on('offerChanged', refreshOfferStats)
+  manager.on('requestsChanged', refreshRequests)
   manager.on('friendsChanged', () => {
     refreshFriendsList()
+    refreshRequests()
     if (selectedFriend) refreshFriendDetail()
   })
   manager.on('stored', () => {
@@ -50,11 +65,13 @@ export function init () {
 
   refreshOfferStats()
   refreshFriendsList()
+  refreshRequests()
 }
 
 // Allow external callers (peer connect/disconnect) to refresh friend states.
 export function refreshPeerList () {
   refreshFriendsList()
+  refreshRequests()
   if (selectedFriend) refreshFriendDetail()
 }
 
@@ -65,19 +82,89 @@ function toggleAddFriendForm (show) {
   if (show) {
     $('fsFriendKeyInput').value = ''
     $('fsFriendLabelInput').value = ''
+    $('fsFriendNoteInput').value = ''
     $('fsFriendKeyInput').focus()
   }
 }
 
-async function handleAddFriend () {
+function toggleRequestsPanel (show) {
+  $('fsRequestsPanel').classList.toggle('hidden', !show)
+  if (show) refreshRequests()
+}
+
+async function handleSendRequest () {
   const key = $('fsFriendKeyInput').value
   const label = $('fsFriendLabelInput').value
+  const note = $('fsFriendNoteInput').value
   try {
-    await manager.addFriend(key, label)
+    await manager.sendFriendRequest(key, label, note)
     toggleAddFriendForm(false)
   } catch (err) {
-    activity.warn('add-friend: ' + err.message)
+    activity.warn('friend-request: ' + err.message)
   }
+}
+
+async function refreshRequests () {
+  try {
+    const [incoming, outgoing] = await Promise.all([
+      manager.listIncomingRequests(),
+      manager.listOutgoingRequests()
+    ])
+
+    const badge = $('fsRequestsBadge')
+    badge.textContent = String(incoming.length)
+    badge.classList.toggle('hidden', incoming.length === 0)
+
+    const inList = $('fs-incoming-list')
+    if (!incoming.length) {
+      inList.innerHTML = '<div class="placeholder">No incoming friend requests</div>'
+    } else {
+      inList.innerHTML = incoming.map(r => {
+        const name = r.label ? escapeHtml(r.label) : 'peer ' + r.publicKey.slice(0, 12)
+        const note = r.note ? '<div class="hint" style="margin:4px 0 0">' + escapeHtml(r.note) + '</div>' : ''
+        return '<div class="agreement-card" style="flex-wrap:wrap">' +
+          '<span class="agreement-peer">' + name + '</span>' +
+          '<span class="agreement-detail" title="' + r.publicKey + '">' +
+            r.publicKey.slice(0, 16) + '…</span>' +
+          '<button class="btn-blue btn-small" data-fs-accept="' + r.publicKey + '">Accept</button>' +
+          '<button class="btn-small" data-fs-decline="' + r.publicKey + '">Decline</button>' +
+          note +
+          '</div>'
+      }).join('')
+      for (const btn of inList.querySelectorAll('[data-fs-accept]')) {
+        btn.addEventListener('click', async () => {
+          try { await manager.acceptRequest(btn.dataset.fsAccept) }
+          catch (err) { activity.warn('accept: ' + err.message) }
+        })
+      }
+      for (const btn of inList.querySelectorAll('[data-fs-decline]')) {
+        btn.addEventListener('click', () => manager.declineRequest(btn.dataset.fsDecline))
+      }
+    }
+
+    const outList = $('fs-outgoing-list')
+    if (!outgoing.length) {
+      outList.innerHTML = '<div class="placeholder">No pending sent requests</div>'
+    } else {
+      const peers = getConnectedPeers()
+      outList.innerHTML = outgoing.map(r => {
+        const name = r.label ? escapeHtml(r.label) : 'peer ' + r.publicKey.slice(0, 12)
+        const status = r.delivered
+          ? 'awaiting reply'
+          : (peers.has(r.publicKey) ? 'sending…' : 'queued (offline)')
+        return '<div class="agreement-card">' +
+          '<span class="agreement-peer">' + name + '</span>' +
+          '<span class="agreement-detail" title="' + r.publicKey + '">' +
+            r.publicKey.slice(0, 16) + '…</span>' +
+          '<span class="agreement-status">' + status + '</span>' +
+          '<button class="btn-small" data-fs-cancel="' + r.publicKey + '">Cancel</button>' +
+          '</div>'
+      }).join('')
+      for (const btn of outList.querySelectorAll('[data-fs-cancel]')) {
+        btn.addEventListener('click', () => manager.cancelOutgoingRequest(btn.dataset.fsCancel))
+      }
+    }
+  } catch {}
 }
 
 async function refreshFriendsList () {
