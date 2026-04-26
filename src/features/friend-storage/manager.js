@@ -48,6 +48,23 @@ export function getOffer () {
   return offeredBytes
 }
 
+export async function getHostedByFriend () {
+  const manifest = getFriendStorageManifest()
+  const byFriend = new Map() // ownerId -> { bytes, files:Set }
+  for await (const node of manifest.createReadStream({ gte: 'fs-hosted:', lt: 'fs-hosted;' })) {
+    const parts = node.key.split(':')
+    const ownerId = parts[1]
+    const fileId = parts[2]
+    if (!byFriend.has(ownerId)) byFriend.set(ownerId, { bytes: 0, files: new Set() })
+    const entry = byFriend.get(ownerId)
+    entry.bytes += node.value.size || 0
+    entry.files.add(fileId)
+  }
+  return [...byFriend.entries()].map(([ownerId, e]) => ({
+    ownerId, bytes: e.bytes, fileCount: e.files.size
+  }))
+}
+
 export async function getHostedStats () {
   const manifest = getFriendStorageManifest()
   let fileCount = 0

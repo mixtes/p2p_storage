@@ -96,6 +96,35 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   border-bottom: 1px solid #262c3a;
 }
 
+/* Sub-tab bar (inside a feature view) */
+.subtab-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.subtab-btn {
+  flex: 1;
+  background: transparent;
+  color: #8a93a6;
+  border: 1px solid #2f3648;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.subtab-btn:hover { color: #c4d0ff; background: #262c3a; }
+.subtab-btn.active {
+  background: #262c3a;
+  color: #E6E6E6;
+  border-color: #5b8def;
+}
+.fs-pane { display: flex; flex-direction: column; gap: 14px; }
+.fs-pane.hidden { display: none; }
+
 main {
   padding: 0 20px 16px;
   display: flex;

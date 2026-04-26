@@ -8,6 +8,11 @@ const $ = (id) => document.getElementById(id)
 let fsFile = null
 
 export function init () {
+  // Sub-tabs
+  for (const btn of document.querySelectorAll('[data-fs-subtab]')) {
+    btn.addEventListener('click', () => switchSubtab(btn.dataset.fsSubtab))
+  }
+
   // Offer side
   $('fsOfferBtn').addEventListener('click', handleSaveOffer)
 
@@ -22,12 +27,23 @@ export function init () {
   })
 
   manager.on('offerChanged', refreshOfferStats)
-  manager.on('stored', () => { refreshStoredFiles(); refreshPeerList() })
+  manager.on('stored', () => { refreshStoredFiles(); refreshPeerList(); refreshLendingList() })
   manager.on('retrieved', refreshStoredFiles)
 
   refreshOfferStats()
   refreshPeerList()
   refreshStoredFiles()
+  refreshLendingList()
+}
+
+function switchSubtab (subtab) {
+  for (const btn of document.querySelectorAll('[data-fs-subtab]')) {
+    btn.classList.toggle('active', btn.dataset.fsSubtab === subtab)
+  }
+  $('fs-pane-lending').classList.toggle('hidden', subtab !== 'lending')
+  $('fs-pane-borrowing').classList.toggle('hidden', subtab !== 'borrowing')
+  if (subtab === 'lending') refreshLendingList()
+  if (subtab === 'borrowing') { refreshPeerList(); refreshStoredFiles() }
 }
 
 /* ── offer side ──────────────────────────────────────────────────────── */
@@ -53,6 +69,32 @@ async function refreshOfferStats () {
         ' file' + (fileCount !== 1 ? 's' : '') + ' (' + formatBytes(totalBytes) + ' used)'
       : 'Not offering any space yet'
   } catch {}
+}
+
+async function refreshLendingList () {
+  const list = $('fs-lending-list')
+  if (!list) return
+  try {
+    const lent = await manager.getHostedByFriend()
+    const peers = getConnectedPeers()
+    if (!lent.length) {
+      list.innerHTML = '<div class="placeholder">No friends are using your space yet</div>'
+      return
+    }
+    list.innerHTML = lent.map(({ ownerId, bytes, fileCount }) => {
+      const online = peers.has(ownerId)
+      const dot = online ? 'health-green' : 'health-red'
+      return '<div class="agreement-card">' +
+        '<span class="health-dot ' + dot + '"></span>' +
+        '<span class="agreement-peer">peer ' + ownerId.slice(0, 12) + '</span>' +
+        '<span class="agreement-detail">' + formatBytes(bytes) + ' · ' +
+          fileCount + ' file' + (fileCount !== 1 ? 's' : '') + '</span>' +
+        '<span class="agreement-status">' + (online ? 'online' : 'offline') + '</span>' +
+        '</div>'
+    }).join('')
+  } catch {
+    list.innerHTML = '<div class="placeholder">Error loading lending data</div>'
+  }
 }
 
 /* ── request side: peer list ─────────────────────────────────────────── */
@@ -156,16 +198,30 @@ async function refreshStoredFiles () {
       return
     }
 
-    list.innerHTML = files.map(f => {
-      const online = peers.has(f.friendPeerId)
+    const byFriend = new Map()
+    for (const f of files) {
+      if (!byFriend.has(f.friendPeerId)) byFriend.set(f.friendPeerId, [])
+      byFriend.get(f.friendPeerId).push(f)
+    }
+
+    list.innerHTML = [...byFriend.entries()].map(([peerId, items]) => {
+      const online = peers.has(peerId)
       const dot = online ? 'health-green' : 'health-red'
-      return '<div class="agreement-card">' +
+      const total = items.reduce((s, f) => s + (f.size || 0), 0)
+      const header = '<div class="agreement-card">' +
         '<span class="health-dot ' + dot + '"></span>' +
-        '<span class="agreement-peer">' + (f.filePath || f.fileId.slice(0, 12)) + '</span>' +
-        '<span class="agreement-detail">' + formatBytes(f.size) + '</span>' +
-        '<span class="agreement-status">' + f.friendPeerId.slice(0, 12) +
-          ' · ' + (online ? 'online' : 'offline') + '</span>' +
+        '<span class="agreement-peer">peer ' + peerId.slice(0, 12) + '</span>' +
+        '<span class="agreement-detail">' + formatBytes(total) + ' · ' +
+          items.length + ' file' + (items.length !== 1 ? 's' : '') + '</span>' +
+        '<span class="agreement-status">' + (online ? 'online' : 'offline') + '</span>' +
         '</div>'
+      const rows = items.map(f =>
+        '<div class="agreement-card" style="margin-left:18px">' +
+          '<span class="agreement-peer">' + (f.filePath || f.fileId.slice(0, 12)) + '</span>' +
+          '<span class="agreement-detail">' + formatBytes(f.size) + '</span>' +
+        '</div>'
+      ).join('')
+      return header + rows
     }).join('')
 
     for (const f of files) {
