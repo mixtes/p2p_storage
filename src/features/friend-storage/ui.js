@@ -100,7 +100,7 @@ async function handleSendRequest () {
     await manager.sendFriendRequest(key, label, note)
     toggleAddFriendForm(false)
   } catch (err) {
-    activity.warn('friend-request: ' + err.message)
+    activity.warn('friend-request failed for ' + (label || key.slice(0, 12)) + ': ' + err.message)
   }
 }
 
@@ -133,8 +133,9 @@ async function refreshRequests () {
       }).join('')
       for (const btn of inList.querySelectorAll('[data-fs-accept]')) {
         btn.addEventListener('click', async () => {
-          try { await manager.acceptRequest(btn.dataset.fsAccept) }
-          catch (err) { activity.warn('accept: ' + err.message) }
+          const key = btn.dataset.fsAccept
+          try { await manager.acceptRequest(key) }
+          catch (err) { activity.warn('accept friend-request from ' + key.slice(0, 12) + ' failed: ' + err.message) }
         })
       }
       for (const btn of inList.querySelectorAll('[data-fs-decline]')) {
@@ -298,7 +299,7 @@ async function handleSaveOffer () {
     await manager.setOffer(mb * 1024 * 1024)
     refreshOfferStats()
   } catch (err) {
-    activity.error('offer error: ' + err.message)
+    activity.error('failed to set storage offer to ' + mb + ' MB: ' + err.message)
   }
 }
 
@@ -337,6 +338,8 @@ async function handleStore () {
   $('fsStoreBtn').disabled = true
   $('fsStoreBtn').textContent = 'Storing…'
 
+  const fileNameForLog = fsFile?.name || '?'
+  const friendForLog = selectedFriend?.label || selectedFriend?.publicKey?.slice(0, 12) || 'friend'
   try {
     const buf = await readFileAsBuffer(fsFile)
     await uploadToFriend(selectedFriend.publicKey, fsFile.name, buf)
@@ -345,7 +348,7 @@ async function handleStore () {
     $('fsFileInput').value = ''
     await refreshFriendDetail()
   } catch (err) {
-    activity.error('friend-store error: ' + err.message)
+    activity.error('store-with-friend failed: ' + fileNameForLog + ' → ' + friendForLog + ': ' + err.message)
   } finally {
     $('fsStoreBtn').textContent = 'Store with Friend'
     updateStoreBtn()
@@ -361,7 +364,7 @@ async function handleRetrieve (fileId, btn) {
     const { data, filePath } = await downloadFromFriend(fileId)
     downloadToUser(data, filePath)
   } catch (err) {
-    activity.error('friend-retrieve error: ' + err.message)
+    activity.error('retrieve-from-friend failed (fileId=' + fileId.slice(0, 12) + '…): ' + err.message)
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Retrieve' }
   }

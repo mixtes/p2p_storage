@@ -94,7 +94,7 @@ export function attachReplicationChannel (conn, handlers, peerId) {
     onmessage (buf) {
       const envelope = decodeEnvelope(buf)
       if (!envelope) {
-        dev.error('[repl-proto] malformed message from ' + peerId)
+        dev.error('[repl-proto] malformed message from ' + peerId + ' (bytes=' + buf.length + ')')
         return
       }
       const handler = handlers[envelope.type]
@@ -102,10 +102,10 @@ export function attachReplicationChannel (conn, handlers, peerId) {
         try {
           handler(envelope.payload, peerId)
         } catch (err) {
-          dev.error('[repl-proto] handler error (' + envelope.type + '):', err)
+          dev.error('[repl-proto] handler error type=' + envelope.type + ' peer=' + peerId + ': ' + (err?.stack || err?.message || err))
         }
       } else {
-        dev.debug('[repl-proto] unhandled message type: ' + envelope.type)
+        dev.debug('[repl-proto] unhandled message type: ' + envelope.type + ' from ' + peerId)
       }
     }
   })
@@ -117,7 +117,7 @@ export function attachReplicationChannel (conn, handlers, peerId) {
         try {
           handlers.onbinary(buf, peerId)
         } catch (err) {
-          dev.error('[repl-proto] binary handler error:', err)
+          dev.error('[repl-proto] binary handler error peer=' + peerId + ' bytes=' + buf.length + ': ' + (err?.stack || err?.message || err))
         }
       }
     }
@@ -132,12 +132,15 @@ export function attachReplicationChannel (conn, handlers, peerId) {
      * @param {object} payload - JSON-serializable data
      */
     send (type, payload) {
-      if (!channel.opened) return false
+      if (!channel.opened) {
+        dev.warn('[repl-proto] send dropped (channel closed) type=' + type + ' peer=' + peerId)
+        return false
+      }
       try {
         jsonMsg.send(encodeEnvelope(type, payload))
         return true
       } catch (err) {
-        dev.error('[repl-proto] send error:', err)
+        dev.error('[repl-proto] send failed type=' + type + ' peer=' + peerId + ': ' + (err?.message || err))
         return false
       }
     },
@@ -148,12 +151,15 @@ export function attachReplicationChannel (conn, handlers, peerId) {
      * @param {Buffer} buf
      */
     sendBinary (buf) {
-      if (!channel.opened) return false
+      if (!channel.opened) {
+        dev.warn('[repl-proto] sendBinary dropped (channel closed) peer=' + peerId + ' bytes=' + buf.length)
+        return false
+      }
       try {
         binaryMsg.send(buf)
         return true
       } catch (err) {
-        dev.error('[repl-proto] sendBinary error:', err)
+        dev.error('[repl-proto] sendBinary failed peer=' + peerId + ' bytes=' + buf.length + ': ' + (err?.message || err))
         return false
       }
     },
