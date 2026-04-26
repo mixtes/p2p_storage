@@ -16,6 +16,7 @@ import { activity, dev } from '../../core/logger.js'
 
 export async function init () {
   await manager.init()
+  await manager.ensureConfigured()
 
   const handlers = manager.createProtocolHandlers()
   setReplicationHandlers(handlers)
@@ -32,9 +33,7 @@ export async function init () {
     dev.info('[replication] peer unregistered: ' + peerId)
   })
 
-  if (manager.isConfigured()) {
-    startHealthMonitor()
-  }
+  startHealthMonitor()
 
   manager.on('configChanged', () => {
     if (!healthMonitor.isRunning()) startHealthMonitor()
