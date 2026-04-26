@@ -259,7 +259,8 @@ export async function getChunkHealth () {
     }
 
     let status = 'healthy'
-    if (onlineKeepers === 0 && totalKeepers > 0) status = 'lost'
+    if (totalKeepers === 0) status = 'pending'
+    else if (onlineKeepers === 0) status = 'lost'
     else if (onlineKeepers < totalKeepers) status = 'degraded'
 
     results.push({
@@ -284,20 +285,23 @@ export async function getFileHealth () {
 
   for (const ch of chunkHealth) {
     if (!files.has(ch.filePath)) {
-      files.set(ch.filePath, { totalChunks: 0, healthy: 0, degraded: 0, lost: 0 })
+      files.set(ch.filePath, { totalChunks: 0, healthy: 0, degraded: 0, lost: 0, pending: 0 })
     }
     const f = files.get(ch.filePath)
     f.totalChunks++
     if (ch.status === 'healthy') f.healthy++
     else if (ch.status === 'degraded') f.degraded++
+    else if (ch.status === 'pending') f.pending++
     else f.lost++
   }
 
   const result = []
   for (const [path, counts] of files) {
     let status = 'healthy'
-    if (counts.lost > 0) status = 'critical'
+    if (counts.pending > 0 && counts.healthy === 0) status = 'pending'
+    else if (counts.lost > 0) status = 'critical'
     else if (counts.degraded > 0) status = 'degraded'
+    else if (counts.pending > 0) status = 'partial'
     result.push({ path, ...counts, status })
   }
 

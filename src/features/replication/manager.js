@@ -51,7 +51,9 @@ const connectedPeers = new Map()        // peerId -> rpc handle
 const peerCapacities = new Map()        // peerId -> { offeredBytes, usedBytes }
 let pendingBinary = new Map()           // peerId -> { chunkId, chunkIndex, totalSize, [mode] }
 
-let config = null                       // { replicationFactor, offeredBytes, replicationKeyHex }
+const DEFAULT_OFFER_BYTES = 10 * 1024 * 1024  // 10 MB
+
+let config = null                       // { offeredBytes, replicationKeyHex }
 let replicationKey = null               // Buffer, 32 bytes
 let friendStorageHandlers = null        // set by friend-storage feature on init
 
@@ -72,14 +74,18 @@ export async function init () {
   if (node) {
     config = node.value
     replicationKey = b4a.from(config.replicationKeyHex, 'hex')
-    dev.info('[repl-mgr] loaded config: N=' + config.replicationFactor +
-      ' offered=' + formatBytes(config.offeredBytes))
+    dev.info('[repl-mgr] loaded config: offered=' + formatBytes(config.offeredBytes))
   }
 }
 
 /* ── configuration ───────────────────────────────────────────────────── */
 
-export async function configure (replicationFactor, offeredBytes) {
+/**
+ * Initialise or refresh the replication config.
+ *
+ * @param {number} offeredBytes - explicit space the user offers to other peers
+ */
+export async function configure (offeredBytes) {
   const manifest = getOwnerManifest()
 
   if (!replicationKey) {
@@ -87,16 +93,41 @@ export async function configure (replicationFactor, offeredBytes) {
   }
 
   config = {
-    replicationFactor,
     offeredBytes,
     replicationKeyHex: b4a.toString(replicationKey, 'hex')
   }
 
   await manifest.put('config', config)
-  activity.info('replication configured: N=' + replicationFactor +
-    ', offering ' + formatBytes(offeredBytes))
+  activity.info('replication configured: offering ' + formatBytes(offeredBytes))
   emit('configChanged', config)
   return config
+}
+
+/**
+ * Minimum space this peer must offer: sum(fileSize * N) for own replication.
+ */
+export async function computeMinOfferedBytes () {
+  const manifest = getOwnerManifest()
+  let total = 0
+  for await (const node of manifest.createReadStream({ gte: 'file:', lt: 'file;' })) {
+    const f = node.value
+    total += (f.size || 0) * (f.replicationFactor || 1)
+  }
+  return total
+}
+
+/**
+ * Ensure config exists. If none, create with the given or zero offer.
+ * If offeredBytes is below the minimum (own replication needs), bump it.
+ */
+export async function ensureConfigured () {
+  if (!config) {
+    await configure(DEFAULT_OFFER_BYTES)
+  }
+  const minOffer = await computeMinOfferedBytes()
+  if (config.offeredBytes < minOffer) {
+    await configure(Math.max(minOffer, DEFAULT_OFFER_BYTES))
+  }
 }
 
 export function getConfig () {
@@ -113,7 +144,7 @@ export function registerPeer (peerId, rpc) {
   connectedPeers.set(peerId, rpc)
   if (config) {
     const used = getKeeperUsedBytes()
-    announceCapacity(rpc, config.offeredBytes, used, config.replicationFactor)
+    announceCapacity(rpc, config.offeredBytes, used, 0)
   }
 }
 
@@ -164,6 +195,7 @@ export function createProtocolHandlers () {
 
     [MSG.REJECT_AGREEMENT] (payload, peerId) {
       activity.info('peer ' + peerId + ' rejected agreement: ' + (payload.reason || 'no reason'))
+      emit('agreementChanged', peerId, 'rejected')
     },
 
     /* ── chunk transfer (keeper side) ─────────────────────────────── */
@@ -244,14 +276,22 @@ export function createProtocolHandlers () {
 
     [MSG.FS_RETRIEVE_FILE_RESP] (payload, peerId) {
       pendingBinary.set(peerId, { ...payload, mode: 'friend-retrieve' })
+    },
+
+    [MSG.FS_FRIEND_REQUEST] (payload, peerId) {
+      if (friendStorageHandlers?.onFriendRequest) friendStorageHandlers.onFriendRequest(payload, peerId)
+    },
+
+    [MSG.FS_FRIEND_REQUEST_ACCEPT] (payload, peerId) {
+      if (friendStorageHandlers?.onFriendRequestAccept) friendStorageHandlers.onFriendRequestAccept(payload, peerId)
     }
   }
 }
 
 /* ── owner side: request agreements ──────────────────────────────────── */
 
-export async function requestAgreements () {
-  if (!config) throw new Error('Replication not configured')
+export async function requestAgreements (replicationFactor) {
+  if (!config) await ensureConfigured()
 
   const neededPerKeeper = Math.ceil(config.offeredBytes / Math.max(connectedPeers.size, 1))
   const ownerKey = getPublicKeyHex()
@@ -260,7 +300,7 @@ export async function requestAgreements () {
     const existing = await getOwnerManifest().get('agreement:' + peerId)
     if (existing && existing.value.status === 'active') continue
 
-    requestAgreement(rpc, ownerKey, neededPerKeeper, config.replicationFactor)
+    requestAgreement(rpc, ownerKey, neededPerKeeper, replicationFactor || 1)
     activity.info('requested agreement from peer ' + peerId)
   }
 }
@@ -272,8 +312,15 @@ export async function requestAgreements () {
  * Picks up to `target` random connected peers without an active agreement
  * and requests one from each, then waits up to `waitMs` for acceptances.
  */
-export async function ensureAgreements (target, waitMs = 5000) {
-  if (!config || target <= 0) return 0
+/**
+ * @param {number} target - how many keepers we need
+ * @param {number} replicationFactor - N for this file
+ * @param {number} [fileSize] - size of the file being replicated (for accurate ask)
+ * @param {number} [waitMs] - how long to wait for acceptances
+ */
+export async function ensureAgreements (target, replicationFactor, fileSize, waitMs = 5000) {
+  if (!config) await ensureConfigured()
+  if (target <= 0) return 0
 
   const manifest = getOwnerManifest()
   const activePeers = new Set()
@@ -299,21 +346,24 @@ export async function ensureAgreements (target, waitMs = 5000) {
   const picked = candidates.slice(0, needed)
 
   const ownerKey = getPublicKeyHex()
-  const neededPerKeeper = Math.ceil(config.offeredBytes / Math.max(picked.length + activePeers.size, 1))
+  const dataBytes = fileSize || 0
+  const neededPerKeeper = Math.max(dataBytes * replicationFactor, CHUNK_SIZE)
   const pickedIds = new Set(picked.map(([peerId]) => peerId))
 
-  activity.info('auto-requesting agreements from ' + picked.length + ' random peer(s)')
+  activity.info('auto-requesting agreements from ' + picked.length +
+    ' peer(s), asking ' + formatBytes(neededPerKeeper) + ' each')
   for (const [peerId, rpc] of picked) {
-    requestAgreement(rpc, ownerKey, neededPerKeeper, config.replicationFactor)
+    requestAgreement(rpc, ownerKey, neededPerKeeper, replicationFactor || 1)
   }
 
+  let responded = 0
   await new Promise((resolve) => {
     let accepted = 0
     const onChange = (peerId, status) => {
-      if (pickedIds.has(peerId) && status === 'active') {
-        accepted++
-        if (accepted >= picked.length) done()
-      }
+      if (!pickedIds.has(peerId)) return
+      responded++
+      if (status === 'active') accepted++
+      if (accepted >= picked.length || responded >= picked.length) done()
     }
     const done = () => {
       const idx = listeners.agreementChanged.indexOf(onChange)
@@ -329,44 +379,44 @@ export async function ensureAgreements (target, waitMs = 5000) {
 }
 
 /**
- * Replicate a single file: chunk → encrypt → distribute to keepers.
+ * Replicate a single file: chunk -> encrypt -> distribute to keepers.
  *
- * @param {string} filePath  - logical path for manifest tracking
- * @param {Buffer} fileData  - raw file content
+ * @param {string} filePath          - logical path for manifest tracking
+ * @param {Buffer} fileData          - raw file content
+ * @param {number} replicationFactor - per-file N (copies across the network)
  */
-export async function replicateFile (filePath, fileData) {
-  if (!config) throw new Error('Replication not configured')
+export async function replicateFile (filePath, fileData, replicationFactor) {
+  if (!replicationFactor || replicationFactor < 1) replicationFactor = 1
 
-  await ensureAgreements(config.replicationFactor)
+  await ensureConfigured()
+  await ensureAgreements(replicationFactor, replicationFactor, fileData.length)
 
   const ownerPk = getPublicKey()
   const manifest = getOwnerManifest()
 
+  const keepers = await getActiveKeepersAsync()
+  if (keepers.length === 0) {
+    activity.warn('no keepers available — no agreements were accepted')
+    return { distributed: 0, total: 0 }
+  }
+
+  const oldNode = await manifest.get('file:' + filePath)
+  const oldN = oldNode ? (oldNode.value.replicationFactor || 1) : 0
+
   const { chunks, totalSize } = chunkBuffer(fileData, filePath, ownerPk)
-  const shards = encode(chunks, config.replicationFactor)
+  const shards = encode(chunks, replicationFactor)
 
   await manifest.put('file:' + filePath, {
     size: totalSize,
     chunkCount: chunks.length,
     chunkSize: CHUNK_SIZE,
+    replicationFactor,
     lastModified: Date.now()
   })
 
-  const keepers = getActiveKeepers()
-  if (keepers.length === 0) {
-    activity.info('no keepers available — chunks queued locally')
-    for (const chunk of chunks) {
-      await manifest.put('chunk:' + chunk.id, {
-        filePath, chunkIndex: chunk.index, size: chunk.data.length,
-        keepers: [], status: 'pending'
-      })
-    }
-    return { distributed: 0, total: shards.length }
-  }
-
   let distributed = 0
   for (const shard of shards) {
-    const keeperIdx = (shard.chunkIndex * config.replicationFactor + shard.replicaIndex) % keepers.length
+    const keeperIdx = (shard.chunkIndex * replicationFactor + shard.replicaIndex) % keepers.length
     const [peerId, rpc] = keepers[keeperIdx]
 
     const encrypted = encryptSymmetric(shard.data, replicationKey)
@@ -385,9 +435,54 @@ export async function replicateFile (filePath, fileData) {
     }
   }
 
+  if (oldN > replicationFactor) {
+    await revokeExcessReplicas(filePath, chunks, oldN, replicationFactor)
+  }
+
+  await recalcOfferedBytes()
+
   activity.info('replicated ' + filePath + ': ' + distributed + '/' + shards.length + ' shards sent')
   emit('chunkProgress', { filePath, distributed, total: shards.length })
   return { distributed, total: shards.length }
+}
+
+/**
+ * When N is reduced for a file, revoke excess shard replicas from keepers.
+ */
+async function revokeExcessReplicas (filePath, chunks, oldN, newN) {
+  const manifest = getOwnerManifest()
+
+  for (const chunk of chunks) {
+    const node = await manifest.get('chunk:' + chunk.id)
+    if (!node) continue
+
+    const keeperList = node.value.keepers || []
+    const excess = keeperList.length - newN
+    if (excess <= 0) continue
+
+    const toRevoke = keeperList.slice(newN)
+    for (const peerId of toRevoke) {
+      const rpc = connectedPeers.get(peerId)
+      if (rpc) revokeChunk(rpc, chunk.id)
+    }
+
+    await manifest.put('chunk:' + chunk.id, {
+      ...node.value,
+      keepers: keeperList.slice(0, newN)
+    })
+  }
+
+  activity.info('revoked excess replicas for ' + filePath + ' (N ' + oldN + ' -> ' + newN + ')')
+}
+
+/**
+ * After replication, ensure offeredBytes is at least the new minimum.
+ */
+async function recalcOfferedBytes () {
+  const minOffer = await computeMinOfferedBytes()
+  if (config && config.offeredBytes < minOffer) {
+    await configure(minOffer)
+  }
 }
 
 /**
@@ -453,12 +548,12 @@ export async function retrieveFile (filePath) {
 
 async function handleAgreementRequest (payload, peerId) {
   if (!config) {
-    const rpc = connectedPeers.get(peerId)
-    if (rpc) rejectAgreement(rpc, 'replication not configured')
-    return
+    await ensureConfigured()
   }
 
-  const freeBytes = config.offeredBytes - getKeeperUsedBytes()
+  let usedBytes = 0
+  try { usedBytes = await getKeeperUsedBytesAsync() || 0 } catch {}
+  const freeBytes = (config.offeredBytes || 0) - usedBytes
   const rpc = connectedPeers.get(peerId)
 
   if (payload.neededBytes > freeBytes) {
@@ -717,8 +812,21 @@ function handleHeartbeat (payload, peerId) {
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-function getActiveKeepers () {
-  return [...connectedPeers.entries()]
+/**
+ * Return only connected peers that have an active agreement with us.
+ * Falls back to scanning the owner manifest for agreement:* entries.
+ */
+async function getActiveKeepersAsync () {
+  const manifest = getOwnerManifest()
+  const keepers = []
+  for await (const node of manifest.createReadStream({ gte: 'agreement:', lt: 'agreement;' })) {
+    if (node.value.status === 'active') {
+      const peerId = node.key.replace('agreement:', '')
+      const rpc = connectedPeers.get(peerId)
+      if (rpc) keepers.push([peerId, rpc])
+    }
+  }
+  return keepers
 }
 
 function getKeeperUsedBytes () {

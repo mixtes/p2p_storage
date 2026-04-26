@@ -22,8 +22,8 @@
     <section class="card" id="network-card">
       <h2>Network</h2>
       <p class="hint">
-        Both devices type the same topic string. Anyone on the same topic
-        connects automatically &mdash; no server in the middle.
+        Enter a topic to connect for file sharing. Replication peers are
+        discovered automatically &mdash; no topic needed.
       </p>
       <div class="row">
         <input id="topic" placeholder="e.g. apple-river-92" />
@@ -107,39 +107,41 @@
       <!-- Feature 2: Storage Replication -->
       <div id="view-replication" class="feature-view hidden">
 
-        <!-- Configuration -->
-        <section class="card" id="repl-config-card">
-          <h2>Replication Setup</h2>
+        <!-- Space offering -->
+        <section class="card" id="repl-offer-card">
+          <h2>Space to Offer</h2>
           <p class="hint">
-            Choose how many copies (N) of your data to keep across the network.
-            You must offer N&times; your data size as storage for other peers.
+            How much disk space you provide for storing other peers&rsquo;
+            encrypted data. Must be at least as much as your own replication
+            needs (shown below). More space = more peers can use you as a keeper.
           </p>
-
-          <div id="repl-config-form">
-            <div class="row" style="margin-bottom:8px">
-              <div class="repl-field">
-                <label for="replFactor">Copies (N)</label>
-                <input id="replFactor" type="number" min="1" max="10" value="2"
-                       style="width:70px;flex:none" />
-              </div>
-              <div class="repl-field">
-                <label for="replOffer">Space to offer (MB)</label>
-                <input id="replOffer" type="number" min="1" value="512"
-                       style="width:100px;flex:none" />
-              </div>
-              <button id="replConfigBtn">Apply</button>
+          <div class="row" style="margin-bottom:8px">
+            <div class="repl-field">
+              <label for="replOffer">Offer (MB)</label>
+              <input id="replOffer" type="number" min="1" value="10"
+                     style="width:100px;flex:none" />
             </div>
+            <button id="replOfferBtn">Save</button>
           </div>
-
-          <div id="repl-config-status" class="kv" hidden>
-            <span>status</span>
-            <code id="replConfigLabel">&hellip;</code>
+          <div class="kv">
+            <span>current offer</span>
+            <code id="replOfferStatus">not configured</code>
+          </div>
+          <div class="kv" id="repl-min-offer-row" hidden>
+            <span>minimum (your replication needs)</span>
+            <code id="replMinOffer">0 B</code>
           </div>
         </section>
 
         <!-- Health overview -->
         <section class="card" id="repl-health-card">
           <h2>Replication Health</h2>
+          <p class="hint">
+            Keeper status: <strong>online</strong> = responded recently,
+            <strong>degraded</strong> = no response for 30+ min,
+            <strong>offline</strong> = disconnected. Bars show what
+            percentage of each file&rsquo;s chunks are held by online keepers.
+          </p>
 
           <div class="repl-health-row">
             <div class="health-stat">
@@ -159,22 +161,34 @@
           <div id="repl-file-health"></div>
         </section>
 
-        <!-- Replicate a file -->
+        <!-- Replicate files / folders -->
         <section class="card">
-          <h2>Replicate a File</h2>
+          <h2>Replicate Files</h2>
           <p class="hint">
-            Pick a file to encrypt, chunk, and distribute across your keepers.
-            Only you can decrypt it &mdash; keepers only see opaque encrypted blocks.
+            Pick files or a folder to encrypt, chunk, and distribute across
+            the network. Each item gets its own copy count (N). Only you can
+            decrypt your data &mdash; keepers only see opaque encrypted blocks.
           </p>
-          <div class="row">
-            <button id="replPickBtn" type="button">Choose file&hellip;</button>
-            <button id="replSendBtn" disabled>Replicate</button>
+          <div class="row" style="margin-bottom:8px">
+            <button id="replPickBtn" type="button">Choose files&hellip;</button>
+            <button id="replPickFolderBtn" type="button">Choose folder&hellip;</button>
+            <button id="replClearBtn" type="button" disabled>Clear</button>
           </div>
-          <div class="kv">
-            <span>file to replicate</span>
-            <code id="replFileLabel">(none selected)</code>
+          <input id="replFileInput" type="file" multiple hidden />
+          <input id="replFolderInput" type="file" webkitdirectory hidden />
+
+          <div id="repl-queue" class="repl-queue">
+            <div class="placeholder">No files selected</div>
           </div>
-          <input id="replFileInput" type="file" hidden />
+
+          <div id="repl-space-info" class="kv" hidden>
+            <span>min. space reserved for other peers</span>
+            <code id="replSpaceCalc">0 B</code>
+          </div>
+
+          <div class="row" style="margin-top:8px">
+            <button id="replSendBtn" disabled>Replicate All</button>
+          </div>
         </section>
 
         <!-- Retrieve a file -->
@@ -192,18 +206,15 @@
           </div>
         </section>
 
-        <!-- Agreements & keeper stats -->
+        <!-- Storage peers (was "Agreements") -->
         <section class="card">
-          <h2>Agreements</h2>
+          <h2>Storage Peers</h2>
           <p class="hint">
-            Peers you have active storage agreements with. Each keeper holds
-            a portion of your encrypted chunks.
+            Peers holding your encrypted chunks. Agreements are negotiated
+            automatically when you replicate files.
           </p>
-          <div class="row" style="margin-bottom:8px">
-            <button id="replRequestBtn" disabled>Request Agreements</button>
-          </div>
           <div id="repl-agreements" class="repl-agreements">
-            <div class="placeholder">No agreements yet</div>
+            <div class="placeholder">No storage peers yet</div>
           </div>
         </section>
 
@@ -229,91 +240,146 @@
       <!-- Feature 3: Friend Storage -->
       <div id="view-friend-storage" class="feature-view hidden">
 
-        <nav class="subtab-bar">
-          <button class="subtab-btn active" data-fs-subtab="lending">Lending</button>
-          <button class="subtab-btn" data-fs-subtab="borrowing">Borrowing</button>
-        </nav>
+        <!-- Trusted friends -->
+        <section class="card" id="fs-friends-card">
+          <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <h2 style="margin:0">Trusted Friends</h2>
+            <div class="row" style="gap:6px">
+              <button id="fsAddFriendBtn" class="btn-blue btn-small" type="button">+ Add Friend</button>
+              <button id="fsRequestsBtn" class="btn-small" type="button">
+                Friend Requests <span id="fsRequestsBadge" class="fs-badge hidden">0</span>
+              </button>
+            </div>
+          </div>
 
-        <!-- Lending pane: space I lend to each friend -->
-        <div id="fs-pane-lending" class="fs-pane">
+          <div id="fsAddFriendForm" class="hidden" style="margin-top:10px">
+            <p class="hint" style="margin:0 0 6px">
+              Enter your friend's public key. They will receive a request and
+              must accept it before you become friends.
+            </p>
+            <div class="row" style="gap:6px">
+              <input id="fsFriendKeyInput" type="text" placeholder="friend's public key (64 hex chars)"
+                     spellcheck="false" autocomplete="off" style="flex:1;min-width:0" />
+              <input id="fsFriendLabelInput" type="text" placeholder="label (optional)"
+                     style="width:140px;flex:none" />
+            </div>
+            <div class="row" style="gap:6px;margin-top:6px">
+              <input id="fsFriendNoteInput" type="text" placeholder="note to send (optional)"
+                     style="flex:1;min-width:0" />
+              <button id="fsAddFriendConfirmBtn" class="btn-blue btn-small" type="button">Send Request</button>
+              <button id="fsAddFriendCancelBtn" class="btn-small" type="button">Cancel</button>
+            </div>
+          </div>
+
+          <div id="fsRequestsPanel" class="hidden" style="margin-top:10px">
+            <h3 style="margin:0 0 6px;font-size:13px;color:#c4d0ff">Incoming</h3>
+            <div id="fs-incoming-list" class="repl-agreements">
+              <div class="placeholder">No incoming friend requests</div>
+            </div>
+            <h3 style="margin:14px 0 6px;font-size:13px;color:#c4d0ff">Sent</h3>
+            <div id="fs-outgoing-list" class="repl-agreements">
+              <div class="placeholder">No pending sent requests</div>
+            </div>
+          </div>
+
+          <div id="fs-friends-list" class="repl-agreements" style="margin-top:10px">
+            <div class="placeholder">No trusted friends yet</div>
+          </div>
+        </section>
+
+        <!-- Global offer setting -->
+        <section class="card">
+          <h2>Offer Memory</h2>
+          <p class="hint">
+            Set how much of your disk you are willing to lend to friends.
+            Connected peers can then offload encrypted files to you &mdash;
+            you hold the blobs but cannot read them.
+          </p>
+          <div class="row" style="margin-bottom:8px">
+            <div class="repl-field">
+              <label for="fsOfferMb">Space to offer (MB)</label>
+              <input id="fsOfferMb" type="number" min="0" value="0"
+                     style="width:100px;flex:none" />
+            </div>
+            <button id="fsOfferBtn">Save</button>
+          </div>
+          <div class="kv">
+            <span>status</span>
+            <code id="fsOfferStatus">Not offering any space yet</code>
+          </div>
+        </section>
+
+        <!-- Per-friend detail (visible only after a friend is selected) -->
+        <div id="fs-friend-detail" class="hidden">
 
           <section class="card">
-            <h2>Offer Memory</h2>
-            <p class="hint">
-              Set how much of your disk you are willing to lend to friends.
-              Connected peers can then offload encrypted files to you &mdash;
-              you hold the blobs but cannot read them.
-            </p>
-            <div class="row" style="margin-bottom:8px">
-              <div class="repl-field">
-                <label for="fsOfferMb">Space to offer (MB)</label>
-                <input id="fsOfferMb" type="number" min="0" value="0"
-                       style="width:100px;flex:none" />
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <div>
+                <h2 id="fs-detail-name" style="margin:0">Friend</h2>
+                <code id="fs-detail-key" style="font-size:11px;color:#8a93a6">&hellip;</code>
               </div>
-              <button id="fsOfferBtn">Save</button>
-            </div>
-            <div class="kv">
-              <span>status</span>
-              <code id="fsOfferStatus">Not offering any space yet</code>
+              <button id="fsDeselectBtn" class="btn-small" type="button">← Back to friends</button>
             </div>
           </section>
 
-          <section class="card">
-            <h2>Lent To Friends</h2>
-            <p class="hint">
-              How much of your offered space each friend is currently using.
-            </p>
-            <div id="fs-lending-list" class="repl-agreements">
-              <div class="placeholder">No friends are using your space yet</div>
-            </div>
-          </section>
+          <nav class="subtab-bar">
+            <button class="subtab-btn active" data-fs-subtab="lend">Lend Space</button>
+            <button class="subtab-btn" data-fs-subtab="borrow">Borrow Space</button>
+          </nav>
 
-        </div>
+          <!-- Lend pane: space I lend to THIS friend -->
+          <div id="fs-pane-lend" class="fs-pane">
+            <section class="card">
+              <h2>Space This Friend Uses</h2>
+              <p class="hint">
+                How much of your offered space this friend is currently using
+                on your device.
+              </p>
+              <div class="kv">
+                <span>used</span>
+                <code id="fs-friend-lent-bytes">0 B</code>
+              </div>
+              <div class="kv">
+                <span>files hosted</span>
+                <code id="fs-friend-lent-files">0</code>
+              </div>
+            </section>
+          </div>
 
-        <!-- Borrowing pane: space and files I have at friends -->
-        <div id="fs-pane-borrowing" class="fs-pane hidden">
+          <!-- Borrow pane: files I have stored at THIS friend -->
+          <div id="fs-pane-borrow" class="fs-pane hidden">
+            <section class="card">
+              <h2>Send to this Friend</h2>
+              <p class="hint">
+                Send an encrypted file to this friend for safekeeping. Only you
+                can decrypt it &mdash; no local copy is kept after the transfer.
+              </p>
+              <div class="row" style="margin-bottom:8px">
+                <button id="fsPickBtn" type="button">Choose file&hellip;</button>
+                <button id="fsStoreBtn" class="btn-blue" disabled>Store with Friend</button>
+              </div>
+              <div class="kv">
+                <span>file to store</span>
+                <code id="fsFileLabel">(none selected)</code>
+              </div>
+              <div class="kv">
+                <span>friend status</span>
+                <code id="fs-friend-conn-status">offline</code>
+              </div>
+              <input id="fsFileInput" type="file" hidden />
+            </section>
 
-          <section class="card">
-            <h2>Send to a Friend</h2>
-            <p class="hint">
-              Send an encrypted file to a friend for safekeeping. Only you can
-              decrypt it &mdash; no local copy is kept after the transfer.
-            </p>
-
-            <div class="kv">
-              <span>send to</span>
-              <select id="fsPeerSelect">
-                <option value="">-- no peers connected --</option>
-              </select>
-            </div>
-
-            <div class="row" style="margin-bottom:8px">
-              <button id="fsPickBtn" type="button">Choose file&hellip;</button>
-              <button id="fsStoreBtn" disabled>Store with Friend</button>
-            </div>
-            <div class="kv">
-              <span>file to store</span>
-              <code id="fsFileLabel">(none selected)</code>
-            </div>
-            <input id="fsFileInput" type="file" hidden />
-          </section>
-
-          <section class="card">
-            <h2>Stored at Friends</h2>
-            <p class="hint">
-              Files you have offloaded, grouped by friend. Pick one and
-              retrieve to fetch &amp; decrypt it back to your device.
-            </p>
-            <div class="row">
-              <select id="fsRetrieveSelect">
-                <option value="">-- select a file --</option>
-              </select>
-              <button id="fsRetrieveBtn" disabled>Retrieve</button>
-            </div>
-            <div id="fs-stored-list" class="repl-agreements" style="margin-top:10px">
-              <div class="placeholder">No files stored with friends yet</div>
-            </div>
-          </section>
+            <section class="card">
+              <h2>Stored at this Friend</h2>
+              <p class="hint">
+                Files you have offloaded to this friend. Click Retrieve to
+                fetch &amp; decrypt one back to your device.
+              </p>
+              <div id="fs-stored-list" class="repl-agreements">
+                <div class="placeholder">No files stored with this friend yet</div>
+              </div>
+            </section>
+          </div>
 
         </div>
 

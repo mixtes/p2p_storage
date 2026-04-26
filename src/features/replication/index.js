@@ -10,7 +10,7 @@
 
 import * as manager from './manager.js'
 import * as ui from './ui.js'
-import { on as onNetwork, setReplicationHandlers } from '../../core/network.js'
+import { on as onNetwork, setReplicationHandlers, joinReplicationPool } from '../../core/network.js'
 import * as healthMonitor from '../../core/health-monitor.js'
 import { activity, dev } from '../../core/logger.js'
 
@@ -19,6 +19,8 @@ export async function init () {
 
   const handlers = manager.createProtocolHandlers()
   setReplicationHandlers(handlers)
+
+  joinReplicationPool()
 
   onNetwork('replicationPeer', (peerId, rpc) => {
     manager.registerPeer(peerId, rpc)
