@@ -226,17 +226,75 @@
 
       </div>
 
-      <!-- Feature 3: Friend Storage (stub) -->
+      <!-- Feature 3: Friend Storage -->
       <div id="view-friend-storage" class="feature-view hidden">
+
+        <!-- Role 1: Offer Memory -->
         <section class="card">
-          <h2>Friend Storage</h2>
+          <h2>Offer Memory</h2>
           <p class="hint">
-            Ask a friend to hold encrypted files for you when you're low on
-            local space. They can't read your data &mdash; only you can decrypt
-            it when you retrieve it.
+            Set how much of your disk you are willing to lend to friends.
+            Connected peers can then offload encrypted files to you &mdash;
+            you hold the blobs but cannot read them.
           </p>
-          <p class="placeholder">Coming soon &mdash; not yet implemented.</p>
+          <div class="row" style="margin-bottom:8px">
+            <div class="repl-field">
+              <label for="fsOfferMb">Space to offer (MB)</label>
+              <input id="fsOfferMb" type="number" min="0" value="0"
+                     style="width:100px;flex:none" />
+            </div>
+            <button id="fsOfferBtn">Save</button>
+          </div>
+          <div class="kv">
+            <span>status</span>
+            <code id="fsOfferStatus">Not offering any space yet</code>
+          </div>
         </section>
+
+        <!-- Role 2: Request Memory -->
+        <section class="card">
+          <h2>Request Memory</h2>
+          <p class="hint">
+            Send an encrypted file to a friend for safekeeping. Only you can
+            decrypt it &mdash; no local copy is kept after the transfer.
+          </p>
+
+          <div class="kv">
+            <span>send to</span>
+            <select id="fsPeerSelect">
+              <option value="">-- no peers connected --</option>
+            </select>
+          </div>
+
+          <div class="row" style="margin-bottom:8px">
+            <button id="fsPickBtn" type="button">Choose file&hellip;</button>
+            <button id="fsStoreBtn" disabled>Store with Friend</button>
+          </div>
+          <div class="kv">
+            <span>file to store</span>
+            <code id="fsFileLabel">(none selected)</code>
+          </div>
+          <input id="fsFileInput" type="file" hidden />
+        </section>
+
+        <!-- Retrieve stored files -->
+        <section class="card">
+          <h2>Retrieve My Files</h2>
+          <p class="hint">
+            Select a file you offloaded to a friend. It will be fetched,
+            decrypted, and downloaded to your device.
+          </p>
+          <div class="row">
+            <select id="fsRetrieveSelect">
+              <option value="">-- select a file --</option>
+            </select>
+            <button id="fsRetrieveBtn" disabled>Retrieve</button>
+          </div>
+          <div id="fs-stored-list" class="repl-agreements" style="margin-top:10px">
+            <div class="placeholder">No files stored with friends yet</div>
+          </div>
+        </section>
+
       </div>
     </main>
 
