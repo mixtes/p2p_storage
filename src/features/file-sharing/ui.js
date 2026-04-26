@@ -2,8 +2,12 @@ import { activity, setStatus } from '../../core/logger.js'
 import * as network from '../../core/network.js'
 import { pushSendFile, startReceiving } from './sync.js'
 import { pickFolderNative } from '../../ui/folder-picker.js'
+import b4a from 'b4a'
 
 const $ = (id) => document.getElementById(id)
+
+const shortPeer = (peer) =>
+  peer?.drive?.key ? b4a.toString(peer.drive.key, 'hex').slice(0, 12) : 'peer'
 
 let receiveFolder = null
 let sendFile = null
@@ -20,7 +24,9 @@ export function init () {
 
   network.on('peerAdd', (peer) => {
     if (receiveFolder) {
-      startReceiving(peer, receiveFolder).catch((err) => activity.error('auto-recv error: ' + err.message))
+      startReceiving(peer, receiveFolder).catch((err) =>
+        activity.error('auto-receive failed from ' + shortPeer(peer) + '… → ' + receiveFolder + ': ' + err.message)
+      )
     }
   })
 }
@@ -49,7 +55,7 @@ async function handleSend () {
   try {
     await pushSendFile(sendFile)
   } catch (err) {
-    activity.error('send error: ' + err.message)
+    activity.error('send failed for ' + sendFile.name + ' (' + sendFile.size + ' B): ' + err.message)
   }
 }
 
@@ -60,11 +66,12 @@ async function handleReceive () {
   }
   const peers = network.getPeers()
   if (peers.size === 0) activity.info('no peers yet; downloads will begin as peers arrive')
+  else activity.info('starting receive from ' + peers.size + ' peer(s) into ' + receiveFolder)
   for (const peer of peers.values()) {
     try {
       await startReceiving(peer, receiveFolder)
     } catch (err) {
-      activity.error('recv error: ' + err.message)
+      activity.error('receive failed from ' + shortPeer(peer) + '… → ' + receiveFolder + ': ' + err.message)
     }
   }
 }
@@ -84,7 +91,7 @@ async function handleFolderPick () {
     if (!folder) return
     setReceiveFolder(folder)
   } catch (err) {
-    activity.error('folder picker error: ' + err.message)
+    activity.error('folder picker failed (download folder unchanged): ' + err.message)
   }
 }
 

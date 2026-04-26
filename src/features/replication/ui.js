@@ -68,7 +68,7 @@ async function handleConfigure () {
     await manager.configure(factor, offeredBytes)
     $('replRequestBtn').disabled = false
   } catch (err) {
-    activity.error('config error: ' + err.message)
+    activity.error('replication config failed (N=' + factor + ', offer=' + offerMb + ' MB): ' + err.message)
   }
 }
 
@@ -108,11 +108,12 @@ async function handleReplicate () {
   try {
     const buf = await readFileAsBuffer(replFile)
     const result = await pushFileFromBuffer(replFile.name, buf)
-    activity.info('replication complete: ' + result.distributed + '/' + result.total + ' shards')
+    activity.info('replication complete for ' + replFile.name + ' (' + formatBytes(buf.length) +
+      '): ' + result.distributed + '/' + result.total + ' shards distributed')
     refreshFileList()
     refreshHealth()
   } catch (err) {
-    activity.error('replication error: ' + err.message)
+    activity.error('replication failed for ' + replFile.name + ' (' + formatBytes(replFile.size) + '): ' + err.message)
   } finally {
     $('replSendBtn').disabled = false
     $('replSendBtn').textContent = 'Replicate'
@@ -131,9 +132,9 @@ async function handleRetrieve () {
   try {
     const data = await pullFileToBuffer(filePath)
     downloadToUser(data, filePath)
-    activity.info('file retrieved: ' + filePath + ' (' + formatBytes(data.length) + ')')
+    activity.info('retrieved ' + filePath + ' (' + formatBytes(data.length) + ') from keepers')
   } catch (err) {
-    activity.error('retrieval error: ' + err.message)
+    activity.error('retrieval failed for ' + filePath + ': ' + err.message)
   } finally {
     $('replRetrieveBtn').disabled = false
     $('replRetrieveBtn').textContent = 'Retrieve'
@@ -150,7 +151,7 @@ async function handleRequestAgreements () {
   try {
     await manager.requestAgreements()
   } catch (err) {
-    activity.error('agreement error: ' + err.message)
+    activity.error('agreement request failed: ' + err.message)
   }
 }
 

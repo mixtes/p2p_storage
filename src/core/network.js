@@ -50,20 +50,37 @@ export async function init () {
     try { await swarm.destroy() } catch {}
   })
 
-  swarm.on('error', (err) => dev.error('[network] swarm error:', err))
+  swarm.on('error', (err) => {
+    dev.error('[network] swarm error (code=' + (err?.code || 'n/a') + '): ' + (err?.message || err))
+    activity.warn('swarm error: ' + (err?.message || err))
+  })
   swarm.on('connection', handleConnection)
+}
+
+function describeConn (info) {
+  const dir = info?.client ? 'outgoing' : 'incoming'
+  const host = info?.peer?.host ? ' ' + info.peer.host + (info.peer.port ? ':' + info.peer.port : '') : ''
+  const topic = info?.topics?.[0] ? ' topic=' + b4a.toString(info.topics[0], 'hex').slice(0, 12) + '…' : ''
+  return dir + host + topic
 }
 
 function handleConnection (conn, info) {
   const store = getStore()
   const localDrive = getLocalDrive()
+  const where = describeConn(info)
 
+  let peerId = 'unknown'
   try {
-    const peerId = b4a.toString(conn.remotePublicKey, 'hex').slice(0, 12)
-    activity.info('peer connected: ' + peerId)
+    peerId = b4a.toString(conn.remotePublicKey, 'hex').slice(0, 12)
+    activity.info('peer connected: ' + peerId + ' [' + where + '] (total: ' + (peers.size + 1) + ')')
     dev.debug('[network] connection from', peerId, info)
 
-    store.replicate(conn)
+    try {
+      store.replicate(conn)
+    } catch (err) {
+      dev.error('[network] corestore.replicate failed (' + peerId + ' ' + where + '): ' + (err?.message || err))
+      throw err
+    }
 
     /* ── file-sharing key exchange channel ──────────────────────────── */
 
@@ -83,7 +100,8 @@ function handleConnection (conn, info) {
         try {
           await onRemoteKey(remoteKey, peerId)
         } catch (err) {
-          dev.error('[network] peer setup error (' + peerId + '):', err)
+          activity.warn('handshake failed with ' + peerId + ' [' + where + ']: ' + (err?.message || err))
+          dev.error('[network] peer key-exchange setup error (' + peerId + ' ' + where + '): ' + (err?.stack || err?.message || err))
         }
       }
     })
@@ -97,14 +115,18 @@ function handleConnection (conn, info) {
       emit('replicationPeer', peerId, rpc)
     }
 
-    conn.on('error', (err) => dev.error('[network] conn error (' + peerId + '):', err))
+    conn.on('error', (err) => {
+      const code = err?.code || err?.errno || 'n/a'
+      dev.error('[network] conn error (' + peerId + ' ' + where + ' code=' + code + '): ' + (err?.message || err))
+    })
     conn.on('close', () => {
-      activity.info('peer disconnected: ' + peerId)
+      activity.info('peer disconnected: ' + peerId + ' [' + where + '] (remaining: ' + Math.max(0, peers.size - 1) + ')')
       removePeerByConn(peerId)
       emit('replicationPeerRemove', peerId)
     })
   } catch (err) {
-    dev.error('[network] connection handler error:', err)
+    dev.error('[network] connection handler crashed (peer=' + peerId + ' ' + where + '): ' + (err?.stack || err?.message || err))
+    activity.warn('connection setup failed with ' + peerId + ' [' + where + ']: ' + (err?.message || err))
   }
 }
 
@@ -117,7 +139,9 @@ async function onRemoteKey (key, connPeerId) {
   await drive.ready()
   activity.info('remote drive ready: ' + hex.slice(0, 16) + '… (v' + drive.version + ')')
 
-  try { drive.download('/') } catch (err) { dev.error('[network] prefetch error:', err) }
+  try { drive.download('/') } catch (err) {
+    dev.error('[network] prefetch failed for remote drive ' + hex.slice(0, 16) + '… (peer=' + connPeerId + '): ' + (err?.message || err))
+  }
 
   const peer = { drive, watcher: null, connPeerId }
   peers.set(hex, peer)
