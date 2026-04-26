@@ -27,13 +27,15 @@ export async function startReceiving (peer, receiveFolder) {
   try {
     await sync()
   } catch (err) {
-    activity.error('sync error: ' + err.message)
+    activity.error('initial sync failed from ' + peerHex + '… → ' + receiveFolder + ': ' + err.message)
   }
 
   peer.watcher = peer.drive.watch('/')
   ;(async () => {
     for await (const _ of peer.watcher) {
-      try { await sync() } catch (err) { activity.error('sync error: ' + err.message) }
+      try { await sync() } catch (err) {
+        activity.error('live sync failed from ' + peerHex + '… → ' + receiveFolder + ': ' + err.message)
+      }
     }
-  })().catch((err) => dev.error('[sync] watcher error:', err))
+  })().catch((err) => dev.error('[sync] watcher loop crashed for ' + peerHex + ':', err))
 }

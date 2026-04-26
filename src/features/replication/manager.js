@@ -276,6 +276,14 @@ export function createProtocolHandlers () {
 
     [MSG.FS_RETRIEVE_FILE_RESP] (payload, peerId) {
       pendingBinary.set(peerId, { ...payload, mode: 'friend-retrieve' })
+    },
+
+    [MSG.FS_FRIEND_REQUEST] (payload, peerId) {
+      if (friendStorageHandlers?.onFriendRequest) friendStorageHandlers.onFriendRequest(payload, peerId)
+    },
+
+    [MSG.FS_FRIEND_REQUEST_ACCEPT] (payload, peerId) {
+      if (friendStorageHandlers?.onFriendRequestAccept) friendStorageHandlers.onFriendRequestAccept(payload, peerId)
     }
   }
 }

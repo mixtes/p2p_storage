@@ -6,7 +6,8 @@ import { getPublicKey, getPublicKeyHex } from '../../core/identity.js'
 import { chunkBuffer, reassemble, CHUNK_SIZE } from '../../core/chunker.js'
 import { encryptSymmetric, decryptSymmetric, generateSymmetricKey } from '../../core/encryption.js'
 import {
-  fsPushFile, fsFileAck, fsRetrieveFile, fsRetrieveFileResp
+  fsPushFile, fsFileAck, fsRetrieveFile, fsRetrieveFileResp,
+  fsFriendRequest, fsFriendRequestAccept
 } from '../../core/replication-protocol.js'
 import {
   getConnectedPeers, setFriendStorageHandlers
@@ -18,7 +19,10 @@ const retrievalBuffer = new Map() // `${fileId}:${chunkIndex}` -> Buffer
 
 let offeredBytes = 0              // how much space this peer is offering to friends
 
-const listeners = { progress: [], stored: [], retrieved: [], offerChanged: [] }
+const listeners = {
+  progress: [], stored: [], retrieved: [], offerChanged: [],
+  friendsChanged: [], requestsChanged: []
+}
 export function on (event, fn) { if (listeners[event]) listeners[event].push(fn) }
 function emit (event, ...args) { for (const fn of listeners[event] || []) fn(...args) }
 
@@ -27,11 +31,259 @@ export async function init () {
     onChunkData: handleIncomingChunk,
     onFileAck: handleFileAck,
     onRetrieveRequest: handleRetrieveRequest,
-    onRetrieveData: handleRetrieveData
+    onRetrieveData: handleRetrieveData,
+    onFriendRequest: handleIncomingFriendRequest,
+    onFriendRequestAccept: handleIncomingFriendRequestAccept
   })
   const manifest = getFriendStorageManifest()
   const offerNode = await manifest.get('fs-offer')
   if (offerNode) offeredBytes = offerNode.value.bytes
+}
+
+/* ── trusted friends ─────────────────────────────────────────────────── */
+
+const FRIEND_PREFIX = 'friend:'
+
+export async function addFriend (publicKeyHex, label) {
+  const key = (publicKeyHex || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    throw new Error('Invalid public key: expected 64 hex characters')
+  }
+  if (key === getPublicKeyHex()) {
+    throw new Error('That is your own public key')
+  }
+  const manifest = getFriendStorageManifest()
+  const existing = await manifest.get(FRIEND_PREFIX + key)
+  if (existing) throw new Error('Friend already added')
+  await manifest.put(FRIEND_PREFIX + key, {
+    label: (label || '').trim() || null,
+    addedAt: Date.now()
+  })
+  activity.info('friend added: ' + key.slice(0, 12))
+  emit('friendsChanged')
+  return { publicKey: key }
+}
+
+export async function removeFriend (publicKeyHex) {
+  const key = (publicKeyHex || '').trim().toLowerCase()
+  const manifest = getFriendStorageManifest()
+  await manifest.del(FRIEND_PREFIX + key)
+  activity.info('friend removed: ' + key.slice(0, 12))
+  emit('friendsChanged')
+}
+
+export async function listFriends () {
+  const manifest = getFriendStorageManifest()
+  const out = []
+  for await (const node of manifest.createReadStream({ gte: FRIEND_PREFIX, lt: 'friend;' })) {
+    out.push({
+      publicKey: node.key.slice(FRIEND_PREFIX.length),
+      label: node.value.label,
+      addedAt: node.value.addedAt
+    })
+  }
+  return out
+}
+
+export async function isFriend (publicKeyHex) {
+  const manifest = getFriendStorageManifest()
+  const node = await manifest.get(FRIEND_PREFIX + (publicKeyHex || '').toLowerCase())
+  return !!node
+}
+
+/* ── friend requests ─────────────────────────────────────────────────── */
+
+const REQ_IN_PREFIX = 'request-in:'
+const REQ_OUT_PREFIX = 'request-out:'
+
+function normalizeKey (k) {
+  return (k || '').trim().toLowerCase()
+}
+
+export async function sendFriendRequest (publicKeyHex, label, note) {
+  const key = normalizeKey(publicKeyHex)
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    throw new Error('Invalid public key: expected 64 hex characters')
+  }
+  if (key === getPublicKeyHex()) throw new Error('That is your own public key')
+
+  const manifest = getFriendStorageManifest()
+  if (await manifest.get(FRIEND_PREFIX + key)) {
+    throw new Error('You are already friends with this peer')
+  }
+  if (await manifest.get(REQ_OUT_PREFIX + key)) {
+    throw new Error('A request is already pending for this peer')
+  }
+  // If they have already sent us a request, accepting is what's wanted.
+  if (await manifest.get(REQ_IN_PREFIX + key)) {
+    return acceptRequest(key, label)
+  }
+
+  const myKey = getPublicKeyHex()
+  const cleanLabel = (label || '').trim() || null
+  const cleanNote = (note || '').trim() || null
+
+  await manifest.put(REQ_OUT_PREFIX + key, {
+    label: cleanLabel,
+    note: cleanNote,
+    sentAt: Date.now(),
+    delivered: false
+  })
+
+  const rpc = getConnectedPeers().get(key)
+  if (rpc) {
+    if (fsFriendRequest(rpc, myKey, cleanLabel, cleanNote)) {
+      await manifest.put(REQ_OUT_PREFIX + key, {
+        label: cleanLabel, note: cleanNote, sentAt: Date.now(), delivered: true
+      })
+      activity.info('friend-request: sent to ' + key.slice(0, 12))
+    } else {
+      activity.warn('friend-request: queued for ' + key.slice(0, 12) + ' (send failed)')
+    }
+  } else {
+    activity.info('friend-request: queued for ' + key.slice(0, 12) + ' (offline)')
+  }
+
+  emit('requestsChanged')
+  return { publicKey: key }
+}
+
+export async function flushOutgoingRequests (peerId) {
+  const key = normalizeKey(peerId)
+  const manifest = getFriendStorageManifest()
+  const node = await manifest.get(REQ_OUT_PREFIX + key)
+  if (!node) return
+  const rpc = getConnectedPeers().get(key)
+  if (!rpc) return
+  const myKey = getPublicKeyHex()
+  if (fsFriendRequest(rpc, myKey, node.value.label, node.value.note)) {
+    await manifest.put(REQ_OUT_PREFIX + key, { ...node.value, delivered: true })
+    activity.info('friend-request: delivered queued request to ' + key.slice(0, 12))
+    emit('requestsChanged')
+  }
+}
+
+export async function listIncomingRequests () {
+  const manifest = getFriendStorageManifest()
+  const out = []
+  for await (const node of manifest.createReadStream({ gte: REQ_IN_PREFIX, lt: 'request-in;' })) {
+    out.push({
+      publicKey: node.key.slice(REQ_IN_PREFIX.length),
+      label: node.value.label,
+      note: node.value.note,
+      receivedAt: node.value.receivedAt
+    })
+  }
+  return out
+}
+
+export async function listOutgoingRequests () {
+  const manifest = getFriendStorageManifest()
+  const out = []
+  for await (const node of manifest.createReadStream({ gte: REQ_OUT_PREFIX, lt: 'request-out;' })) {
+    out.push({
+      publicKey: node.key.slice(REQ_OUT_PREFIX.length),
+      label: node.value.label,
+      note: node.value.note,
+      sentAt: node.value.sentAt,
+      delivered: !!node.value.delivered
+    })
+  }
+  return out
+}
+
+export async function acceptRequest (publicKeyHex, overrideLabel) {
+  const key = normalizeKey(publicKeyHex)
+  const manifest = getFriendStorageManifest()
+  const incoming = await manifest.get(REQ_IN_PREFIX + key)
+  if (!incoming && !await manifest.get(FRIEND_PREFIX + key)) {
+    throw new Error('No pending request from that peer')
+  }
+  const label = (overrideLabel || (incoming && incoming.value.label) || '').trim() || null
+
+  if (!await manifest.get(FRIEND_PREFIX + key)) {
+    await manifest.put(FRIEND_PREFIX + key, { label, addedAt: Date.now() })
+    activity.info('friend added (accepted request): ' + key.slice(0, 12))
+  }
+  if (incoming) await manifest.del(REQ_IN_PREFIX + key)
+  // If we had an outgoing request to the same peer, it's now resolved.
+  await manifest.del(REQ_OUT_PREFIX + key)
+
+  // Tell the requester we accepted, so they auto-add us.
+  const rpc = getConnectedPeers().get(key)
+  if (rpc) fsFriendRequestAccept(rpc, getPublicKeyHex(), label)
+
+  emit('friendsChanged')
+  emit('requestsChanged')
+  return { publicKey: key }
+}
+
+export async function declineRequest (publicKeyHex) {
+  const key = normalizeKey(publicKeyHex)
+  const manifest = getFriendStorageManifest()
+  await manifest.del(REQ_IN_PREFIX + key)
+  activity.info('friend-request declined: ' + key.slice(0, 12))
+  emit('requestsChanged')
+}
+
+export async function cancelOutgoingRequest (publicKeyHex) {
+  const key = normalizeKey(publicKeyHex)
+  const manifest = getFriendStorageManifest()
+  await manifest.del(REQ_OUT_PREFIX + key)
+  emit('requestsChanged')
+}
+
+async function handleIncomingFriendRequest (payload, peerId) {
+  const fromKey = normalizeKey(payload && payload.fromKey)
+  if (!/^[0-9a-f]{64}$/.test(fromKey)) {
+    dev.warn('[friend-request] dropped malformed request from ' + peerId)
+    return
+  }
+  // If the request didn't come over the channel from that peer, treat it as
+  // suspicious and drop it. This stops a peer from spoofing requests on
+  // behalf of someone else.
+  if (normalizeKey(peerId) !== fromKey) {
+    dev.warn('[friend-request] dropped: fromKey ' + fromKey.slice(0, 12) +
+      ' does not match peer ' + peerId.slice(0, 12))
+    return
+  }
+  const manifest = getFriendStorageManifest()
+
+  // Already friends: nothing to do.
+  if (await manifest.get(FRIEND_PREFIX + fromKey)) return
+
+  // If we had previously sent them a request, this incoming request acts as
+  // mutual interest — auto-accept and notify them.
+  if (await manifest.get(REQ_OUT_PREFIX + fromKey)) {
+    await acceptRequest(fromKey, payload.label)
+    return
+  }
+
+  await manifest.put(REQ_IN_PREFIX + fromKey, {
+    label: (payload.label || '').toString().slice(0, 80) || null,
+    note: (payload.note || '').toString().slice(0, 280) || null,
+    receivedAt: Date.now()
+  })
+  activity.info('friend-request: received from ' + fromKey.slice(0, 12))
+  emit('requestsChanged')
+}
+
+async function handleIncomingFriendRequestAccept (payload, peerId) {
+  const fromKey = normalizeKey(payload && payload.fromKey)
+  if (!/^[0-9a-f]{64}$/.test(fromKey)) return
+  if (normalizeKey(peerId) !== fromKey) return
+
+  const manifest = getFriendStorageManifest()
+  const had = await manifest.get(REQ_OUT_PREFIX + fromKey)
+  await manifest.del(REQ_OUT_PREFIX + fromKey)
+
+  if (!await manifest.get(FRIEND_PREFIX + fromKey)) {
+    const label = (had && had.value.label) || (payload.label || '').toString().slice(0, 80) || null
+    await manifest.put(FRIEND_PREFIX + fromKey, { label, addedAt: Date.now() })
+    activity.info('friend-request: ' + fromKey.slice(0, 12) + ' accepted your request')
+    emit('friendsChanged')
+  }
+  emit('requestsChanged')
 }
 
 /* ── offer side ──────────────────────────────────────────────────────── */
@@ -46,6 +298,23 @@ export async function setOffer (bytes) {
 
 export function getOffer () {
   return offeredBytes
+}
+
+export async function getHostedByFriend () {
+  const manifest = getFriendStorageManifest()
+  const byFriend = new Map() // ownerId -> { bytes, files:Set }
+  for await (const node of manifest.createReadStream({ gte: 'fs-hosted:', lt: 'fs-hosted;' })) {
+    const parts = node.key.split(':')
+    const ownerId = parts[1]
+    const fileId = parts[2]
+    if (!byFriend.has(ownerId)) byFriend.set(ownerId, { bytes: 0, files: new Set() })
+    const entry = byFriend.get(ownerId)
+    entry.bytes += node.value.size || 0
+    entry.files.add(fileId)
+  }
+  return [...byFriend.entries()].map(([ownerId, e]) => ({
+    ownerId, bytes: e.bytes, fileCount: e.files.size
+  }))
 }
 
 export async function getHostedStats () {

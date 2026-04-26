@@ -75,7 +75,7 @@ async function handleSaveOffer () {
     await manager.configure(offeredBytes)
     activity.info('space offer saved: ' + formatBytes(offeredBytes))
   } catch (err) {
-    activity.error('config error: ' + err.message)
+    activity.error('replication config failed (N=' + factor + ', offer=' + offerMb + ' MB): ' + err.message)
   }
 }
 
@@ -350,7 +350,7 @@ async function handleReplicate () {
     refreshHealth()
     renderOfferStatus()
   } catch (err) {
-    activity.error('replication error: ' + err.message)
+    activity.error('replication failed for ' + replFile.name + ' (' + formatBytes(replFile.size) + '): ' + err.message)
   } finally {
     $('replSendBtn').disabled = replQueue.length === 0
     $('replSendBtn').textContent = 'Replicate All'
@@ -371,9 +371,9 @@ async function handleRetrieve () {
   try {
     const data = await pullFileToBuffer(filePath)
     downloadToUser(data, filePath)
-    activity.info('file retrieved: ' + filePath + ' (' + formatBytes(data.length) + ')')
+    activity.info('retrieved ' + filePath + ' (' + formatBytes(data.length) + ') from keepers')
   } catch (err) {
-    activity.error('retrieval error: ' + err.message)
+    activity.error('retrieval failed for ' + filePath + ': ' + err.message)
   } finally {
     $('replRetrieveBtn').disabled = false
     $('replRetrieveBtn').textContent = 'Retrieve'
