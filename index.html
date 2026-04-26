@@ -229,6 +229,25 @@
       <!-- Feature 3: Friend Storage -->
       <div id="view-friend-storage" class="feature-view hidden">
 
+        <!-- Trusted friends -->
+        <section class="card" id="fs-friends-card">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <h2 style="margin:0">Trusted Friends</h2>
+            <button id="fsAddFriendBtn" class="btn-blue btn-small" type="button">+ Add Friend</button>
+          </div>
+          <div id="fsAddFriendForm" class="row hidden" style="margin-top:10px;gap:6px">
+            <input id="fsFriendKeyInput" type="text" placeholder="friend's public key (64 hex chars)"
+                   spellcheck="false" autocomplete="off" style="flex:1;min-width:0" />
+            <input id="fsFriendLabelInput" type="text" placeholder="label (optional)"
+                   style="width:140px;flex:none" />
+            <button id="fsAddFriendConfirmBtn" class="btn-blue btn-small" type="button">Add</button>
+            <button id="fsAddFriendCancelBtn" class="btn-small" type="button">Cancel</button>
+          </div>
+          <div id="fs-friends-list" class="repl-agreements" style="margin-top:10px">
+            <div class="placeholder">No trusted friends yet</div>
+          </div>
+        </section>
+
         <nav class="subtab-bar">
           <button class="subtab-btn active" data-fs-subtab="lending">Lending</button>
           <button class="subtab-btn" data-fs-subtab="borrowing">Borrowing</button>

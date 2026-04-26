@@ -18,7 +18,7 @@ const retrievalBuffer = new Map() // `${fileId}:${chunkIndex}` -> Buffer
 
 let offeredBytes = 0              // how much space this peer is offering to friends
 
-const listeners = { progress: [], stored: [], retrieved: [], offerChanged: [] }
+const listeners = { progress: [], stored: [], retrieved: [], offerChanged: [], friendsChanged: [] }
 export function on (event, fn) { if (listeners[event]) listeners[event].push(fn) }
 function emit (event, ...args) { for (const fn of listeners[event] || []) fn(...args) }
 
@@ -32,6 +32,57 @@ export async function init () {
   const manifest = getFriendStorageManifest()
   const offerNode = await manifest.get('fs-offer')
   if (offerNode) offeredBytes = offerNode.value.bytes
+}
+
+/* ── trusted friends ─────────────────────────────────────────────────── */
+
+const FRIEND_PREFIX = 'friend:'
+
+export async function addFriend (publicKeyHex, label) {
+  const key = (publicKeyHex || '').trim().toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(key)) {
+    throw new Error('Invalid public key: expected 64 hex characters')
+  }
+  if (key === getPublicKeyHex()) {
+    throw new Error('That is your own public key')
+  }
+  const manifest = getFriendStorageManifest()
+  const existing = await manifest.get(FRIEND_PREFIX + key)
+  if (existing) throw new Error('Friend already added')
+  await manifest.put(FRIEND_PREFIX + key, {
+    label: (label || '').trim() || null,
+    addedAt: Date.now()
+  })
+  activity.info('friend added: ' + key.slice(0, 12))
+  emit('friendsChanged')
+  return { publicKey: key }
+}
+
+export async function removeFriend (publicKeyHex) {
+  const key = (publicKeyHex || '').trim().toLowerCase()
+  const manifest = getFriendStorageManifest()
+  await manifest.del(FRIEND_PREFIX + key)
+  activity.info('friend removed: ' + key.slice(0, 12))
+  emit('friendsChanged')
+}
+
+export async function listFriends () {
+  const manifest = getFriendStorageManifest()
+  const out = []
+  for await (const node of manifest.createReadStream({ gte: FRIEND_PREFIX, lt: 'friend;' })) {
+    out.push({
+      publicKey: node.key.slice(FRIEND_PREFIX.length),
+      label: node.value.label,
+      addedAt: node.value.addedAt
+    })
+  }
+  return out
+}
+
+export async function isFriend (publicKeyHex) {
+  const manifest = getFriendStorageManifest()
+  const node = await manifest.get(FRIEND_PREFIX + (publicKeyHex || '').toLowerCase())
+  return !!node
 }
 
 /* ── offer side ──────────────────────────────────────────────────────── */

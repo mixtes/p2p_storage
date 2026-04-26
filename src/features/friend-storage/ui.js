@@ -13,6 +13,17 @@ export function init () {
     btn.addEventListener('click', () => switchSubtab(btn.dataset.fsSubtab))
   }
 
+  // Add Friend
+  $('fsAddFriendBtn').addEventListener('click', () => toggleAddFriendForm(true))
+  $('fsAddFriendCancelBtn').addEventListener('click', () => toggleAddFriendForm(false))
+  $('fsAddFriendConfirmBtn').addEventListener('click', handleAddFriend)
+  $('fsFriendKeyInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleAddFriend()
+    if (e.key === 'Escape') toggleAddFriendForm(false)
+  })
+
+  manager.on('friendsChanged', refreshFriendsList)
+
   // Offer side
   $('fsOfferBtn').addEventListener('click', handleSaveOffer)
 
@@ -34,6 +45,64 @@ export function init () {
   refreshPeerList()
   refreshStoredFiles()
   refreshLendingList()
+  refreshFriendsList()
+}
+
+function toggleAddFriendForm (show) {
+  $('fsAddFriendForm').classList.toggle('hidden', !show)
+  if (show) {
+    $('fsFriendKeyInput').value = ''
+    $('fsFriendLabelInput').value = ''
+    $('fsFriendKeyInput').focus()
+  }
+}
+
+async function handleAddFriend () {
+  const key = $('fsFriendKeyInput').value
+  const label = $('fsFriendLabelInput').value
+  try {
+    await manager.addFriend(key, label)
+    toggleAddFriendForm(false)
+  } catch (err) {
+    activity.warn('add-friend: ' + err.message)
+  }
+}
+
+async function refreshFriendsList () {
+  const list = $('fs-friends-list')
+  if (!list) return
+  try {
+    const friends = await manager.listFriends()
+    const peers = getConnectedPeers()
+    if (!friends.length) {
+      list.innerHTML = '<div class="placeholder">No trusted friends yet</div>'
+      return
+    }
+    list.innerHTML = friends.map(f => {
+      const online = peers.has(f.publicKey)
+      const dot = online ? 'health-green' : 'health-red'
+      const name = f.label ? escapeHtml(f.label) : 'peer ' + f.publicKey.slice(0, 12)
+      return '<div class="agreement-card">' +
+        '<span class="health-dot ' + dot + '"></span>' +
+        '<span class="agreement-peer">' + name + '</span>' +
+        '<span class="agreement-detail" title="' + f.publicKey + '">' +
+          f.publicKey.slice(0, 16) + '…</span>' +
+        '<span class="agreement-status">' + (online ? 'online' : 'offline') + '</span>' +
+        '<button class="btn-small" data-fs-remove-friend="' + f.publicKey + '">Remove</button>' +
+        '</div>'
+    }).join('')
+    for (const btn of list.querySelectorAll('[data-fs-remove-friend]')) {
+      btn.addEventListener('click', () => manager.removeFriend(btn.dataset.fsRemoveFriend))
+    }
+  } catch {
+    list.innerHTML = '<div class="placeholder">Error loading friends</div>'
+  }
+}
+
+function escapeHtml (s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]))
 }
 
 function switchSubtab (subtab) {
